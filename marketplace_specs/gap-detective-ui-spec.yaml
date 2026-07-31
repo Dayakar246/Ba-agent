@@ -1,0 +1,39 @@
+version: "1.0.0"
+servers:
+  - url: "https://ba-agent-aqd8c3d8dtdrbcat.centralus-01.azurewebsites.net/api/agents/analyze-gaps"
+
+ui_preferences:
+  execution:
+    mode: asynchronous
+    loader_style: terminal_stream
+
+  inputs:
+    - name: "document_id"
+      label: "Document UUID"
+      widget_type: "text"
+      validation:
+        required: true
+    - name: "extraction"
+      label: "Extraction JSON Payload"
+      widget_type: "code_editor"
+      validation:
+        required: true
+    - name: "lob"
+      label: "Line of Business (LOB)"
+      widget_type: "dropdown"
+      options:
+        - "Commercial Auto"
+        - "Business Owners Policy (BOP)"
+        - "General Liability"
+        - "Workers Compensation"
+      default: "Commercial Auto"
+
+  outputs:
+    primary_view: "dashboard"
+    data_mapping:
+      - key: "quality_score"
+        label: "BRD Quality Score"
+        widget: "metric_card"
+      - key: "gaps.gaps"
+        label: "Detailed Gap Analysis"
+        widget: "data_table"

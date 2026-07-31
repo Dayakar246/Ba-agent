@@ -1,0 +1,49 @@
+version: "1.0.0"
+servers:
+  - url: "https://ba-agent-aqd8c3d8dtdrbcat.centralus-01.azurewebsites.net/api/agents/sync-ado"
+
+ui_preferences:
+  execution:
+    mode: asynchronous
+    loader_style: terminal_stream
+
+  inputs:
+    - name: "trd_markdown"
+      label: "TRD Markdown Payload"
+      widget_type: "code_editor"
+      validation:
+        required: true
+    - name: "ado_org"
+      label: "Azure DevOps Organization Name"
+      widget_type: "text"
+      placeholder: "e.g., valuemomentum"
+      validation:
+        required: true
+    - name: "ado_project"
+      label: "Azure DevOps Project Name"
+      widget_type: "text"
+      placeholder: "e.g., Backstage"
+      validation:
+        required: true
+    - name: "ado_token"
+      label: "Azure DevOps Personal Access Token (PAT)"
+      widget_type: "password"
+      validation:
+        required: true
+
+  outputs:
+    primary_view: "dashboard"
+    data_mapping:
+      - key: "status"
+        label: "Sync Status"
+        widget: "metric_card"
+      - key: "features_created"
+        label: "Work Items Created"
+        widget: "data_table"
+
+  payload:
+    trd_markdown: "{{inputs.trd_markdown}}"
+    brd_text: "{{inputs.brd_text}}"
+    ado_org: "{{inputs.ado_org}}"
+    ado_project: "{{inputs.ado_project}}"
+    ado_token: "{{inputs.ado_token}}"

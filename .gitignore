@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+backend/venv/
+backend/__pycache__/
+*.pyc
+
+# Build outputs
+frontend/dist/
+*.log
+
+# Sensitive information
+.env
+backend/.env
+backend/.env.example
+
+# Local temporary files
+temp_*
+*.tmp
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# OS files
+.DS_Store
+Thumbs.db

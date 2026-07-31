@@ -1,0 +1,41 @@
+version: "1.0.0"
+servers:
+  - url: "https://ba-agent-aqd8c3d8dtdrbcat.centralus-01.azurewebsites.net/api/agents/generate-trd"
+
+ui_preferences:
+  execution:
+    mode: asynchronous
+    loader_style: terminal_stream
+
+  inputs:
+    - name: "extraction"
+      label: "Extraction JSON Payload"
+      widget_type: "code_editor"
+      validation:
+        required: true
+    - name: "gaps"
+      label: "Gaps JSON Payload"
+      widget_type: "code_editor"
+      validation:
+        required: true
+    - name: "lob"
+      label: "Line of Business (LOB)"
+      widget_type: "dropdown"
+      options:
+        - "Commercial Auto"
+        - "Business Owners Policy (BOP)"
+        - "General Liability"
+        - "Workers Compensation"
+      default: "Commercial Auto"
+    - name: "brd_text"
+      label: "Raw BRD Text (Optional)"
+      widget_type: "text_area"
+      validation:
+        required: false
+
+  outputs:
+    primary_view: "dashboard"
+    data_mapping:
+      - key: "trd_markdown"
+        label: "Technical Requirements Document (TRD)"
+        widget: "markdown_viewer"

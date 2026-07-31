@@ -1,0 +1,23 @@
+version: "1.0.0"
+servers:
+  - url: "https://ba-agent-aqd8c3d8dtdrbcat.centralus-01.azurewebsites.net/api/agents/memory"
+
+ui_preferences:
+  execution:
+    mode: asynchronous
+    loader_style: terminal_stream
+
+  inputs:
+    - name: "query"
+      label: "Search Query"
+      widget_type: "textarea"
+      placeholder: "e.g., What are the rules for modifying a BOP policy midterm?"
+      validation:
+        required: true
+
+  outputs:
+    primary_view: "dashboard"
+    data_mapping:
+      - key: "retrieved_context"
+        label: "Retrieved Enterprise Guidelines"
+        widget: "markdown_viewer"

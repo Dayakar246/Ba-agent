@@ -1,0 +1,19 @@
+fastapi
+uvicorn
+python-multipart
+pydantic
+pymupdf
+requests
+python-dotenv
+google-genai>=0.3.0
+groq
+sqlalchemy
+psycopg2-binary
+azure-communication-email
+python-jose
+passlib
+gunicorn
+markdown
+azure-storage-blob
+# chromadb (Disabled)
+# sentence-transformers (Disabled)

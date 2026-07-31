@@ -1,0 +1,27 @@
+version: "1.0.0"
+servers:
+  - url: "https://ba-agent-aqd8c3d8dtdrbcat.centralus-01.azurewebsites.net/api/agents/extract"
+
+ui_preferences:
+  execution:
+    mode: asynchronous
+    loader_style: terminal_stream
+
+  inputs:
+    - name: "document_id"
+      label: "Document UUID"
+      widget_type: "text"
+      validation:
+        required: true
+    - name: "text_content"
+      label: "Raw Document Text"
+      widget_type: "textarea"
+      validation:
+        required: true
+
+  outputs:
+    primary_view: "dashboard"
+    data_mapping:
+      - key: "structured_requirements"
+        label: "Extracted JSON Requirements"
+        widget: "code_editor"

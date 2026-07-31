@@ -1,0 +1,35 @@
+openapi: "3.0.0"
+info:
+  title: "Gap Detective Micro-Agent API"
+  version: "1.0.0"
+  description: "Independent REST endpoint for the BA Agent Pro Gap Detective node."
+servers:
+  - url: "https://ba-agent-aqd8c3d8dtdrbcat.centralus-01.azurewebsites.net"
+paths:
+  /api/agents/analyze-gaps:
+    post:
+      summary: "Gap Detective Agent"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                document_id:
+                  type: string
+                extraction:
+                  type: object
+                lob:
+                  type: string
+                edge_cases:
+                  type: array
+                  items:
+                    type: string
+                updated_requirements:
+                  type: array
+                  items:
+                    type: object
+      responses:
+        '200':
+          description: "Gaps and risks JSON"

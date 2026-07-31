@@ -1,0 +1,24 @@
+openapi: "3.0.0"
+info:
+  title: "Memory Micro-Agent API"
+  version: "1.0.0"
+  description: "Independent REST endpoint for querying the Enterprise P&C Knowledge Vault."
+servers:
+  - url: "https://ba-agent-aqd8c3d8dtdrbcat.centralus-01.azurewebsites.net"
+paths:
+  /api/agents/memory:
+    post:
+      summary: "Memory Agent (Knowledge Retrieval)"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                query:
+                  type: string
+                  description: "Search query for P&C guidelines or past project memory"
+      responses:
+        '200':
+          description: "Retrieved guidelines and institutional memory text payload"

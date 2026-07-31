@@ -1,0 +1,25 @@
+openapi: "3.0.0"
+info:
+  title: "Extraction Micro-Agent API"
+  version: "1.0.0"
+  description: "Independent REST endpoint for the BA Agent Pro Extraction node."
+servers:
+  - url: "https://ba-agent-aqd8c3d8dtdrbcat.centralus-01.azurewebsites.net"
+paths:
+  /api/agents/extract:
+    post:
+      summary: "Extraction Agent"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                document_id:
+                  type: string
+                text_content:
+                  type: string
+      responses:
+        '200':
+          description: "Structured requirements JSON"

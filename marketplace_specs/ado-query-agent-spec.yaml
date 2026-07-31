@@ -1,0 +1,38 @@
+openapi: "3.0.0"
+info:
+  title: "ADO Query Micro-Agent API"
+  version: "1.0.0"
+  description: "Independent REST endpoint for conversational Azure DevOps queries."
+servers:
+  - url: "https://ba-agent-aqd8c3d8dtdrbcat.centralus-01.azurewebsites.net"
+paths:
+  /api/agents/ado-query:
+    post:
+      summary: "ADO Query Agent"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                query:
+                  type: string
+                  description: "The natural language query from the user"
+                ado_org:
+                  type: string
+                ado_project:
+                  type: string
+                ado_token:
+                  type: string
+                  format: password
+      responses:
+        '200':
+          description: "Formatted Markdown response"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: string

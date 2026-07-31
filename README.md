@@ -1,0 +1,67 @@
+# Requify Agent Pro - Intelligent BA Suite
+
+Requify Agent Pro is a high-intelligence multi-agent platform designed to replicate the comprehensive workflow of a Senior Business Analyst. It transforms raw requirements into engineering-ready backlogs using parallel reasoning, visual process mapping, and real-time Azure DevOps integration.
+
+## 🚀 Getting Started
+
+### 1. Prerequisites
+- **Python 3.10+**
+- **Node.js 18+**
+- **Azure DevOps Project** (with Personal Access Token)
+- **API Keys**: Groq and Azure OpenAI.
+
+### 2. Backend Setup
+```bash
+cd backend
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+#### Configuration
+Create a `.env` file in the `backend` directory:
+```env
+# AI Providers
+GROQ_API_KEY=your_key
+
+
+# Azure DevOps
+ADO_ORG_URL=https://dev.azure.com/your_org
+ADO_PROJECT=your_project
+ADO_PAT=your_pat
+```
+
+#### Running the Backend
+```bash
+uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+```
+The API will be available at `http://localhost:8000`.
+
+---
+
+### 3. Frontend Setup
+```bash
+cd frontend
+npm install
+```
+
+#### Running the Frontend
+```bash
+npm run dev
+```
+The application will be available at `http://localhost:5173`.
+
+---
+
+## 🧠 Key Features
+- **Intelligent Extraction**: Uses Groq/Azure OpenAI for high-speed requirement capturing.
+- **Expert Reviewers**: Unified Gap Analysis with QA, Security, and UX audits.
+- **Visual Flow**: Automated Mermaid.js process visualization.
+- **Release Strategist**: AI-driven MoSCoW prioritization and delivery roadmap.
+- **ADO Control Platform**: Real-time bidirectional sync with Azure DevOps work items.
+- **Capacity Planner**: Workload distribution and bottleneck detection.
+
+## 🛠 Tech Stack
+- **Backend**: FastAPI, SQLAlchemy, Llama 3.1 70B (via Groq), Azure OpenAI.
+- **Frontend**: React, Vite, Vanilla CSS (Glassmorphism), Mermaid.js.
+

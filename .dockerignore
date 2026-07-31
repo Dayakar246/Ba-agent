@@ -1,0 +1,10 @@
+node_modules
+__pycache__
+*.pyc
+.env
+.git
+.vscode
+frontend/dist
+backend/instance
+backend/test_*.py
+.pytest_cache

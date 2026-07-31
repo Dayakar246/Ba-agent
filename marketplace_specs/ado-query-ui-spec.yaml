@@ -1,0 +1,31 @@
+name: "ADO Query Agent"
+description: "Conversational Azure DevOps querying node"
+icon: "DatabaseSearch"
+inputs:
+  - name: "query"
+    type: "chat_input"
+    label: "Ask ADO a question"
+    description: "e.g., 'What are the pending tasks?' or 'Assign Task 123 to John'"
+  - name: "ado_org"
+    type: "string"
+    label: "Azure DevOps Organization"
+    required: true
+  - name: "ado_project"
+    type: "string"
+    label: "Azure DevOps Project"
+    required: true
+  - name: "ado_token"
+    type: "password"
+    label: "ADO Personal Access Token"
+    required: true
+outputs:
+  - name: "response"
+    type: "markdown"
+    label: "ADO Query Results"
+apiMapping:
+  endpoint: "/api/agents/ado-query"
+  payload:
+    query: "{{inputs.query}}"
+    ado_org: "{{inputs.ado_org}}"
+    ado_project: "{{inputs.ado_project}}"
+    ado_token: "{{inputs.ado_token}}"
