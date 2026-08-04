@@ -1,5 +1,6 @@
 import json
 import asyncio
+import re
 from services.llm_service import LLMService
 
 class FunctionalSpecAgent:
@@ -122,7 +123,8 @@ CRITICAL PRODUCTION MANDATE:
 - ABSOLUTELY DO NOT SKIP OR JUMP REQUIREMENTS. Every requirement MUST appear in its module matrix table!
 - DO NOT generate any Mermaid diagrams, graph LR, flowcharts, or visual diagram codeblocks. Strictly output clean text and markdown tables.
 """
-            return await self.llm.call(prompt, provider="azure", agent_name="FunctionalSpecArchitect")
+            raw_spec = await self.llm.call(prompt, provider="azure", agent_name="FunctionalSpecArchitect")
+            return self.post_process_spec_text(raw_spec)
 
         # --- SOLUTION A: MODULAR CHUNKED ASSEMBLY FOR >15 REQUIREMENTS ---
         print(f" [FunctionalSpecAgent] SOLUTION A: Executing Modular Chunked Assembly for {len(reqs_list)} Functional Requirements...")
@@ -201,5 +203,24 @@ OUTPUT INSTRUCTIONS:
         section3_master = "\n\n## 3. Specific Functional Requirements Matrix\n\n" + "\n\n".join(chunk_results)
         master_spec = f"{header_markdown}\n\n{section3_master}\n\n{footer_markdown}"
 
+        # Stage 5: Clean Post-Processing (Terminology & Buzzword Alignment)
+        master_spec = self.post_process_spec_text(master_spec)
+
         print(f" [FunctionalSpecAgent] SOLUTION A COMPLETED CLEANLY! Assembled 100% complete Functional Spec with {len(reqs_list)} requirements.")
         return master_spec
+
+    def post_process_spec_text(self, text: str) -> str:
+        """
+        Enforces strict domain terminology and removes unrequested generic buzzwords.
+        """
+        if not text: return ""
+
+        # 1. Terminology alignment: Component Workflow vs Standalone System
+        text = re.sub(r"\bBuilding\s+Information\s+(?:page\s+)?system\b", "Building Information component workflow", text, flags=re.I)
+        text = re.sub(r"\bstandalone\s+system\b", "component workflow within the LOB ecosystem", text, flags=re.I)
+
+        # 2. Suppress unrequested generic security/performance buzzwords if generated as generic bullet points
+        text = re.sub(r"- \*\*Performance\*\*: Assumed optimal performance.*?\n", "", text, flags=re.I)
+        text = re.sub(r"- \*\*Security\*\*: Standard secure authorization.*?\n", "", text, flags=re.I)
+        
+        return text

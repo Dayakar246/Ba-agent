@@ -8,27 +8,20 @@ export const StoryDetailsFormatted = ({ story }) => {
   let rawDesc = story.description || '';
   const rawAC = story.acceptance_criteria;
 
-  // Replace "User Story Statement" header with "Description" to mirror Azure DevOps standards
-  rawDesc = rawDesc.replace(/\*\*\s*User Story Statement\s*\*\*:?/gi, '**Description:**');
-
-  // Ensure newlines before bold section headers if smushed together
-  rawDesc = rawDesc.replace(/([^\n])\s*(\*\*(?:Description|User Story Statement|Business Context|Workflow Impact|Functional Rules|Acceptance Criteria)[^*]*:\*\*)/gi, '$1\n\n$2');
-
-  let mainDesc = rawDesc;
-  let extractedACText = '';
-
-  // Deduplicate if title statement is repeated at the start of description
-  const storyTitleClean = (story.title || '').replace(/^\[[^\]]+\]\s*/, '').trim();
-  if (storyTitleClean && storyTitleClean.length > 10) {
-    const escapedTitle = storyTitleClean.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    mainDesc = mainDesc.replace(new RegExp(`^(?:\\*\\*Description:\\*\\*\\s*)?${escapedTitle}\\.?\\s*`, 'i'), '**Description:**\n');
+  // Extract clean INVEST statement "As a..." ONLY (strip Business Context, Workflow Impact, etc.)
+  let storyStatement = rawDesc;
+  const match = rawDesc.match(/As\s+an?\s+[^,.]+,\s*I\s+want\s+to\s+[^,.]+,\s*so\s+that\s+[^.\n]+/i) || rawDesc.match(/As\s+an?\s+[\s\S]+?(?=\n\n|\*\*|\Z)/i);
+  if (match) {
+    storyStatement = match[0].trim();
   }
+  storyStatement = storyStatement.replace(/\*\*\s*(?:User Story|Description|User Story Statement)[^*]*\*\*:?/gi, '').trim();
+
+  let extractedACText = '';
 
   // Separate Acceptance Criteria if embedded inside description
   const acMatch = rawDesc.match(/\*\*\s*Acceptance Criteria[^*]*\*\*:?/i) || rawDesc.match(/Acceptance Criteria\s*\([^)]*\):?/i);
   if (acMatch) {
     const splitIdx = rawDesc.indexOf(acMatch[0]);
-    mainDesc = mainDesc.substring(0, splitIdx).trim();
     extractedACText = rawDesc.substring(splitIdx + acMatch[0].length).trim();
   }
 

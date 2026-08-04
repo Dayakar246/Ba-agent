@@ -734,10 +734,13 @@ async def analyze_requirements(payload: dict, db: Session = Depends(get_db)):
         config = {"configurable": {"thread_id": analysis_id}}
         
         doc = db.query(Document).filter(Document.id == doc_id).first()
-        if not doc:
-            raise HTTPException(status_code=404, detail="Document not found")
+        lob = payload.get("lob") or payload.get("project_id") or (doc.project_id if doc and doc.project_id != "guest" else None) or "Commercial Property"
+        if doc and payload.get("lob"):
+            doc.project_id = payload.get("lob")
+            try: db.commit()
+            except Exception: pass
             
-        initial_state = {"analysis_id": analysis_id, "original_text": doc.content, "context_type": "document"}
+        initial_state = {"analysis_id": analysis_id, "original_text": doc.content, "context_type": "document", "lob": lob}
         
         # Run graph until it hits the first interrupt (spec)
         state_result = await swarm_graph.ainvoke(initial_state, config=config)
@@ -1421,8 +1424,9 @@ async def automate_backlog(payload: dict, db: Session = Depends(get_db)):
     return result
 
 @app.get("/download-spec/{doc_id}")
-async def download_functional_spec(doc_id: str, db: Session = Depends(get_db)):
-    print(f"[API: /download-spec/{doc_id}] Requesting Full Discovery PDF export...")
+async def download_functional_spec(doc_id: str, include_nfr = True, db: Session = Depends(get_db)):
+    is_nfr_included = str(include_nfr).lower() not in ['false', '0', 'off', 'no']
+    print(f"[API: /download-spec/{doc_id}] Requesting Full Discovery PDF export (include_nfr={is_nfr_included})...")
     
     # 1. Automatic doc_id resolution across Document, ProjectStateModel, and Analysis tables
     actual_doc_id = doc_id
@@ -1444,10 +1448,11 @@ async def download_functional_spec(doc_id: str, db: Session = Depends(get_db)):
 
     doc_id = actual_doc_id or doc_id
 
-    doc_name = doc.name if doc else "Business Discovery Document"
+    import re
+    raw_name = doc.name if doc else "Commercial Property Discovery Document"
     upload_date = str(doc.upload_date)[:10] if doc and doc.upload_date else "N/A"
-    lob = doc.project_id if doc and doc.project_id else "Insurance LOB"
-    
+    lob = (doc.project_id if doc and doc.project_id and doc.project_id != "guest" else None) or (analysis.project_id if analysis and analysis.project_id else None) or "Commercial Property"
+
     import json
     import os
     import markdown
@@ -1519,6 +1524,24 @@ async def download_functional_spec(doc_id: str, db: Session = Depends(get_db)):
     if not functional_spec and not gaps and not backlog and not test_cases:
         raise HTTPException(status_code=404, detail="No generated discovery artifacts (Functional Spec, Gaps, Backlog, or Test Cases) found for this document.")
 
+    # Derive a meaningful, client-friendly document title from Executive Summary or Feature Overview
+    doc_title_clean = ""
+    if functional_spec and isinstance(functional_spec, str):
+        title_m = re.search(r"^#+\s*(?:Document Title|1\.\s*Executive Summary|Project Overview):\s*(.+)$", functional_spec, re.M | re.I) or re.search(r"^#\s+([^\n]+)$", functional_spec, re.M)
+        if title_m:
+            candidate = title_m.group(1).strip()
+            if candidate and "Functional Specification Document" not in candidate and "IEEE" not in candidate and "temp_" not in candidate:
+                doc_title_clean = candidate
+
+    if not doc_title_clean:
+        clean_file_name = re.sub(r"^temp_[a-f0-9\-]+_", "", raw_name, flags=re.I).replace(".pdf", "").replace(".docx", "").replace("_", " ").strip()
+        if clean_file_name and clean_file_name.lower() not in ["commercial property discovery document", "business discovery document", "sample"]:
+            doc_title_clean = f"{lob} - {clean_file_name} Specification"
+        else:
+            doc_title_clean = f"{lob} Building Information Intake & Policy Specification"
+
+    doc_name = doc_title_clean
+
     # Load logo base64
     import base64
     logo_base64 = ""
@@ -1537,6 +1560,15 @@ async def download_functional_spec(doc_id: str, db: Session = Depends(get_db)):
     # 1. Functional Specification Section
     if functional_spec:
         spec_text = functional_spec if isinstance(functional_spec, str) else json.dumps(functional_spec, indent=2)
+        if not is_nfr_included:
+            # Strip Section 4 Non-Functional Requirements if user unchecks NFR inclusion
+            spec_text = re.sub(r"(?:##\s*|#\s*)4\.\s*Non-Functional Requirements.*?(?=(?:##\s*|#\s*)\d+\.|\Z)", "", spec_text, flags=re.S | re.I)
+            spec_text = re.sub(r"##\s*4\.\s*Non-Functional Requirements.*", "", spec_text, flags=re.S | re.I)
+
+        # Terminology alignment: Component Workflow vs Standalone System
+        spec_text = re.sub(r"\bBuilding\s+Information\s+(?:page\s+)?system\b", "Building Information component workflow", spec_text, flags=re.I)
+        spec_text = re.sub(r"\bstandalone\s+system\b", "component workflow within the LOB ecosystem", spec_text, flags=re.I)
+
         rendered_spec = markdown.markdown(spec_text, extensions=['extra', 'tables', 'fenced_code'])
         sections_html.append(f"""
         <div class="section-card page-break">
@@ -1623,13 +1655,21 @@ async def download_functional_spec(doc_id: str, db: Session = Depends(get_db)):
                         tasks_list = story.get('tasks', [])
                         task_bullets = "".join([f"<li><code style='color:#005599;'>{t}</code></li>" for t in tasks_list]) if tasks_list else ""
 
+                        formatted_story_body = story_desc if isinstance(story_desc, str) else str(story_desc)
+                        invest_match = re.search(r"As\s+an?\s+[^,.]+,\s*I\s+want\s+to\s+[^,.]+,\s*so\s+that\s+[^.\n]+", formatted_story_body, re.I)
+                        if invest_match:
+                            formatted_story_body = invest_match.group(0).strip()
+                        else:
+                            formatted_story_body = re.sub(r"\*\*\s*(?:Business Context|Workflow Impact|Functional Rules)[^*]*\*\*:?[\s\S]*", "", formatted_story_body, flags=re.I).strip()
+                        formatted_story_body = re.sub(r"^\*\*\s*(?:User Story|Description)[^*]*\*\*:?\s*", "", formatted_story_body, flags=re.I).strip()
+
                         stories_html += f"""
                         <div class="story-card">
                             <div class="story-header">
                                 <strong>📖 {story_title}</strong>
                                 <span class="badge badge-moscow">{moscow}</span>
                             </div>
-                            <p class="desc-text"><strong>Description:</strong> {story_desc}</p>
+                            <div class="desc-text"><strong>User Story:</strong> {formatted_story_body}</div>
                             <p><strong>Acceptance Criteria:</strong></p>
                             <ul>{ac_bullets}</ul>
                             {f'<p><strong>Technical Tasks:</strong></p><ul>{task_bullets}</ul>' if task_bullets else ''}

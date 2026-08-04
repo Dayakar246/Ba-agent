@@ -1225,6 +1225,7 @@ const WorkflowView = ({ activeStep, completedSteps, data, onFinish, onClose, isS
   const [showAllGaps, setShowAllGaps] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [reviewerEmail, setReviewerEmail] = useState('');
+  const [includeNFR, setIncludeNFR] = useState(true);
 
   const STEPS = [
     { title: 'Extraction', icon: <img src="/assets/icons/icons8-business-analysis-64.png" width="18" height="18" alt="Extraction" style={{ verticalAlign: 'middle' }} />, key: 'extraction' },
@@ -1348,13 +1349,17 @@ const WorkflowView = ({ activeStep, completedSteps, data, onFinish, onClose, isS
           <button className="btn-secondary" onClick={onClose}>✕ Close Session</button>
           {activeStep === 5 && (
             <>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', color: '#64748b', cursor: 'pointer', userSelect: 'none' }}>
+                <input type="checkbox" checked={includeNFR} onChange={(e) => setIncludeNFR(e.target.checked)} style={{ cursor: 'pointer' }} />
+                Include NFRs
+              </label>
               <button className="btn-secondary" onClick={() => {
                     const activeDocId = data.document_id || data.docId || data.documentId || data.analysis_id || data.id;
                 if (!activeDocId) {
                   alert("Document ID not found. Please run an analysis first.");
                   return;
                 }
-                window.open(`${API_BASE}/download-spec/${activeDocId}`, '_blank');
+                window.open(`${API_BASE}/download-spec/${activeDocId}?include_nfr=${includeNFR}`, '_blank');
               }}>Export PDF</button>
               <button 
                 className="btn-primary pulse-btn" 
@@ -1432,14 +1437,18 @@ const WorkflowView = ({ activeStep, completedSteps, data, onFinish, onClose, isS
             <div className="final-review-area animation-fade-in">
               <div className="review-header">
                 <h2>Final Project Orchestration</h2>
-                <div className="review-actions">
+                <div className="review-actions" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', color: '#64748b', cursor: 'pointer', userSelect: 'none' }}>
+                    <input type="checkbox" checked={includeNFR} onChange={(e) => setIncludeNFR(e.target.checked)} style={{ cursor: 'pointer' }} />
+                    Include NFRs
+                  </label>
                   <button className="btn-secondary" onClick={() => {
                         const activeDocId = data.document_id || data.docId || data.documentId || data.analysis_id || data.id;
                     if (!activeDocId) {
                       alert("Document ID not found. Please run an analysis first.");
                       return;
                     }
-                    window.open(`${API_BASE}/download-spec/${activeDocId}`, '_blank');
+                    window.open(`${API_BASE}/download-spec/${activeDocId}?include_nfr=${includeNFR}`, '_blank');
                   }}>Export PDF</button>
                   <button className="btn-primary" onClick={() => setShowEmailModal(true)}>Approve & Sync to ADO</button>
                 </div>

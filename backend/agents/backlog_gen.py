@@ -57,7 +57,7 @@ Architect a comprehensive, production-grade Azure DevOps hierarchical backlog (E
 
 STRATEGIC DOMAIN RULES:
 1. EPICS GROUPING: Organically group Epics by Functional Domain Sub-Systems (e.g., Auth & Access Control, Core Business Operations, Security & Compliance, Integration & API Gateway, Reporting & Telemetry).
-2. USER STORY FORMAT: User Story TITLE must be a CONCISE 3 to 7-word feature title (e.g. "[FR-005] Policy Search & Filter Panel"). The DESCRIPTION field must contain the formal statement "As a [persona], I want to [action], so that [value]" followed by Business Context, Workflow Impact, and Functional Rules. NEVER set the TITLE to the "As a..." sentence!
+2. USER STORY FORMAT: User Story TITLE must be a CONCISE 3 to 7-word feature title (e.g. "[FR-005] Policy Search & Filter Panel"). The DESCRIPTION field must contain ONLY the formal statement "As a [persona], I want to [action], so that [value]". DO NOT include Business Context, Workflow Impact, or Functional Rules inside user story descriptions.
 3. ACCEPTANCE CRITERIA (BDD): Every acceptance criterion MUST follow Behavior-Driven Development Gherkin syntax: "Given [precondition], When [user action], Then [expected system behavior]".
 4. TECHNICAL TASKS: Every User Story MUST include specific, actionable engineering tasks (e.g., Frontend Component Task, Backend API/DB Schema Task, QA Automation Spec Task).
 5. RELEASE PHASING: Assign MoSCoW priorities (Must, Should, Could, Won't) and Release Phasing (MVP, Phase 2, Phase 3).
@@ -93,9 +93,9 @@ TRD CONTENT:
 
     def sanitize_backlog_json(self, parsed_json):
         """
-        Sanitizes user story titles and descriptions to prevent duplicate content.
-        Ensures story title is a clean, short 3-7 word title (e.g. '[FR-001] User Authentication Panel')
-        instead of repeating the full 'As a persona, I want to...' sentence in the title.
+        Sanitizes user story titles and descriptions to enforce strict enterprise standards.
+        - Story Title: Concise 3-7 word feature title (e.g. '[FR-001] User Authentication Panel').
+        - Story Description: Clean INVEST statement ONLY ('As a <role>, I want <goal>, so that <benefit>').
         """
         if not isinstance(parsed_json, dict) or "epics" not in parsed_json:
             return parsed_json
@@ -112,9 +112,8 @@ TRD CONTENT:
                     desc = story.get("description", "")
                     req_id = story.get("requirement_id") or ""
                     
-                    # Check if title starts with "As a" or "As an"
+                    # 1. Clean Title if LLM put "As a ..." in title
                     if re.match(r"^As\s+an?\s+", title, re.I):
-                        # Extract the action part from "I want to [action] so that"
                         action_match = re.search(r"I\s+want\s+to\s+([^,.]+?)(?:\s+so\s+that|\.|$)", title, re.I)
                         if action_match:
                             clean_action = action_match.group(1).strip()
@@ -127,10 +126,32 @@ TRD CONTENT:
                             clean_title = f"[{req_id}] {clean_title}"
                             
                         story["title"] = clean_title
-                        
-                    # Ensure description includes the INVEST statement if missing
-                    if desc and not re.search(r"As\s+an?\s+", desc, re.I) and re.match(r"^As\s+an?\s+", title, re.I):
-                        story["description"] = f"**User Story Statement:**\n{title}\n\n{desc}"
+
+                    # 2. Extract clean INVEST statement ONLY for description (remove Business Context, Workflow Impact, etc.)
+                    full_text = f"{title}\n{desc}"
+                    invest_match = re.search(r"As\s+an?\s+[^,.]+,\s*I\s+want\s+to\s+[^,.]+,\s*so\s+that\s+[^.\n]+", full_text, re.I)
+                    if invest_match:
+                        clean_stmt = invest_match.group(0).strip()
+                        clean_stmt = re.sub(r"^\*\*\s*(?:User Story|Description)[^*]*\*\*:?\s*", "", clean_stmt, flags=re.I).strip()
+                        story["description"] = clean_stmt
+                    else:
+                        # Fallback: Strip markdown headers like Business Context
+                        clean_desc = re.sub(r"\*\*\s*(?:Business Context|Workflow Impact|Functional Rules)[^*]*\*\*:?[\s\S]*", "", desc, flags=re.I).strip()
+                        clean_desc = re.sub(r"\*\*\s*(?:User Story|Description)[^*]*\*\*:?\s*", "", clean_desc, flags=re.I).strip()
+                        story["description"] = clean_desc if clean_desc else desc
+
+                    # 3. Contextualize generic Technical Tasks if present
+                    tasks = story.get("tasks", [])
+                    cleaned_tasks = []
+                    story_feature_context = story.get("title", "").replace(f"[{req_id}]", "").strip()
+                    for task in tasks:
+                        task_str = task if isinstance(task, str) else (task.get("title") if isinstance(task, dict) else str(task))
+                        if re.match(r"^(?:Implement|Handle|Populate|Build|Create|Update)\s*$", task_str, re.I):
+                            task_str = f"{task_str} {story_feature_context} component logic"
+                        elif re.match(r"^(?:Implement|Handle|Populate)\s+(?:backend|frontend|api|database|ui|logic|service)\s*$", task_str, re.I):
+                            task_str = f"{task_str} for {story_feature_context}"
+                        cleaned_tasks.append(task_str)
+                    story["tasks"] = cleaned_tasks
 
         return parsed_json
 

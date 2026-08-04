@@ -7,6 +7,7 @@ export default function FunctionalSpecAccordionViewer({ content }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [openSections, setOpenSections] = useState({});
   const [allExpanded, setAllExpanded] = useState(true);
+  const [hideNFR, setHideNFR] = useState(false);
 
   const rawText = typeof content === 'string' ? content : (content ? JSON.stringify(content, null, 2) : '');
 
@@ -58,14 +59,18 @@ export default function FunctionalSpecAccordionViewer({ content }) {
     });
   }, [rawText]);
 
-  // Filter sections by search term
+  // Filter sections by search term and NFR toggle
   const filteredSections = useMemo(() => {
-    if (!searchTerm.trim()) return parsedSections;
+    let sections = parsedSections;
+    if (hideNFR) {
+      sections = sections.filter(sec => !sec.title.toLowerCase().includes('non-functional') && !sec.title.toLowerCase().includes('nfr'));
+    }
+    if (!searchTerm.trim()) return sections;
     const term = searchTerm.toLowerCase();
-    return parsedSections.filter(sec => 
+    return sections.filter(sec => 
       sec.title.toLowerCase().includes(term) || sec.text.toLowerCase().includes(term)
     );
-  }, [parsedSections, searchTerm]);
+  }, [parsedSections, searchTerm, hideNFR]);
 
   const toggleSection = (id) => {
     setOpenSections(prev => ({
@@ -138,7 +143,12 @@ export default function FunctionalSpecAccordionViewer({ content }) {
           )}
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', color: '#475569', cursor: 'pointer', userSelect: 'none', background: '#ffffff', padding: '6px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: '500' }}>
+            <input type="checkbox" checked={!hideNFR} onChange={(e) => setHideNFR(!e.target.checked)} style={{ cursor: 'pointer' }} />
+            Include NFR Section
+          </label>
+
           <button
             className="btn-secondary"
             onClick={handleToggleAll}
