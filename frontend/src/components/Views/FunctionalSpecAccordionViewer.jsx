@@ -11,53 +11,74 @@ export default function FunctionalSpecAccordionViewer({ content }) {
 
   const rawText = typeof content === 'string' ? content : (content ? JSON.stringify(content, null, 2) : '');
 
-  // Parse markdown content into structured sections based on h2 / h3 headings
-  const parsedSections = useMemo(() => {
-    if (!rawText) return [];
+  // Convert FR-xxx tags into REQ-xxx tags strictly in the frontend display
+  const formattedText = useMemo(() => {
+    if (!rawText) return '';
+    return rawText.replace(/\bFR([-\s]?\d+)\b/gi, 'REQ$1');
+  }, [rawText]);
 
-    const lines = rawText.split('\n');
+  // Parse markdown content into structured sections based on top-level h1 / h2 headings
+  const parsedSections = useMemo(() => {
+    if (!formattedText) return [];
+
+    const lines = formattedText.split('\n');
     const sections = [];
-    let currentSection = {
-      id: 'sec-0',
-      title: '1. Executive Summary & Overview',
-      contentLines: [],
-      frCount: 0
-    };
+    let currentSection = null;
 
     lines.forEach((line) => {
-      const isHeading = line.match(/^#{1,3}\s+(.+)/);
-      if (isHeading) {
-        if (currentSection.contentLines.length > 0 || currentSection.title) {
+      // Do NOT split sub-modules (e.g. "## 3.1", "### 3.2") into new accordion boxes
+      const isSubModuleHeading = line.match(/^#{1,3}\s+3\.\d+/);
+      const isTopHeading = !isSubModuleHeading && line.match(/^#{1,2}\s+(.+)/);
+
+      if (isTopHeading) {
+        if (currentSection && (currentSection.contentLines.length > 0 || currentSection.title)) {
           sections.push(currentSection);
         }
-        const titleText = isHeading[1].trim();
+        const titleText = isTopHeading[1].trim();
         currentSection = {
           id: `sec-${sections.length + 1}`,
           title: titleText,
           contentLines: [line],
-          frCount: 0
+          reqCount: 0
         };
       } else {
-        currentSection.contentLines.push(line);
+        if (!currentSection) {
+          currentSection = {
+            id: `sec-1`,
+            title: '1. Executive Summary & Overview',
+            contentLines: [line],
+            reqCount: 0
+          };
+        } else {
+          currentSection.contentLines.push(line);
+        }
       }
     });
 
-    if (currentSection.contentLines.length > 0 || currentSection.title) {
+    if (currentSection && (currentSection.contentLines.length > 0 || currentSection.title)) {
       sections.push(currentSection);
     }
 
-    // Count FR tags inside each section using a flexible regex pattern: FR-xxx, FR xxx, or [FR-xxx]
     return sections.map(sec => {
       const text = sec.contentLines.join('\n');
-      const frMatches = text.match(/\[?FR[-\s]?\d+\]?/gi) || [];
-      const uniqueFRs = new Set(frMatches.map(m => m.toUpperCase().replace(/[\[\]\s]/g, '').replace('FR', 'FR-')));
+      const reqMatches = text.match(/\[?REQ[-\s]?\d+\]?/gi) || [];
+      const uniqueREQ = new Set(reqMatches.map(m => m.toUpperCase().replace(/[\[\]\s]/g, '').replace('REQ', 'REQ-').replace('REQ--', 'REQ-')));
       return {
         ...sec,
         text,
-        frCount: uniqueFRs.size
+        frCount: uniqueREQ.size
       };
     });
-  }, [rawText]);
+  }, [formattedText]);
+
+  // Custom Markdown components to strip 4th & 5th table columns in frontend
+  const markdownComponents = useMemo(() => ({
+    tr: ({ node, children, ...props }) => {
+      const childArray = React.Children.toArray(children);
+      const filteredCells = childArray.filter((_, idx) => idx !== 3 && idx !== 4);
+      return <tr {...props}>{filteredCells}</tr>;
+    }
+  }), []);
 
   // Filter sections by search term and NFR toggle
   const filteredSections = useMemo(() => {
@@ -88,11 +109,37 @@ export default function FunctionalSpecAccordionViewer({ content }) {
   };
 
   const totalFRs = useMemo(() => {
-    if (!rawText) return 0;
-    const allMatches = rawText.match(/\[?FR[-\s]?\d+\]?/gi) || [];
-    const globalUniqueFRs = new Set(allMatches.map(m => m.toUpperCase().replace(/[\[\]\s]/g, '').replace('FR', 'FR-')));
-    return Math.max(globalUniqueFRs.size, parsedSections.reduce((acc, s) => acc + s.frCount, 0));
-  }, [rawText, parsedSections]);
+    if (!formattedText) return 0;
+    const allMatches = formattedText.match(/\[?REQ[-\s]?\d+\]?/gi) || [];
+    const globalUnique = new Set(allMatches.map(m => m.toUpperCase().replace(/[\[\]\s]/g, '').replace('REQ', 'REQ-').replace('REQ--', 'REQ-')));
+    return Math.max(globalUnique.size, parsedSections.reduce((acc, s) => acc + s.frCount, 0));
+  }, [formattedText, parsedSections]);
+
+  // Helper to deduplicate table header rows and separator lines inside Section 3
+  const deduplicateTableHeaders = (text) => {
+    if (!text) return '';
+    const lines = text.split('\n');
+    const cleanLines = [];
+    let headerSeen = false;
+
+    for (let line of lines) {
+      const isHeaderRow = line.includes('Requirement ID') || line.includes('Requirement Name');
+      const isSeparatorRow = /^\|\s*:?-+:?\s*\|\s*:?-+:?\s*\|/.test(line);
+
+      if (isHeaderRow) {
+        if (headerSeen) continue; // Skip duplicate table header row
+        headerSeen = true;
+      } else if (isSeparatorRow && headerSeen) {
+        // Skip duplicate separator line if header was already seen
+        const lastLine = cleanLines[cleanLines.length - 1] || '';
+        if (!lastLine.includes('Requirement ID') && !lastLine.includes('Requirement Name')) {
+          continue;
+        }
+      }
+      cleanLines.push(line);
+    }
+    return cleanLines.join('\n');
+  };
 
   return (
     <div className="functional-spec-accordion-container" style={{ color: '#1e293b', background: '#ffffff', padding: '16px', borderRadius: '12px' }}>
@@ -109,58 +156,49 @@ export default function FunctionalSpecAccordionViewer({ content }) {
         flexWrap: 'wrap',
         gap: '12px'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div style={{ position: 'relative', width: '280px' }}>
-            <Search size={16} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
-            <input
-              type="text"
-              placeholder="Search FR ID (e.g. FR-005) or keywords..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '7px 12px 7px 34px',
-                borderRadius: '8px',
-                border: '1px solid #cbd5e1',
-                background: '#ffffff',
-                color: '#0f172a',
-                fontSize: '0.85rem'
-              }}
-            />
-          </div>
-          {totalFRs > 0 && (
-            <span style={{
-              fontSize: '0.8rem',
-              padding: '4px 10px',
-              borderRadius: '20px',
-              background: '#eff6ff',
-              color: '#1d4ed8',
-              border: '1px solid #bfdbfe',
-              fontWeight: '600'
-            }}>
-              {totalFRs} Mapped FRs
-            </span>
-          )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: '1', minWidth: '240px' }}>
+          <Search size={18} color="#64748b" />
+          <input
+            type="text"
+            placeholder="Search REQ ID (e.g. REQ-001) or keyword..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '8px 12px',
+              borderRadius: '6px',
+              border: '1px solid #cbd5e1',
+              fontSize: '0.85rem',
+              outline: 'none'
+            }}
+          />
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', color: '#475569', cursor: 'pointer', userSelect: 'none', background: '#ffffff', padding: '6px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: '500' }}>
-            <input type="checkbox" checked={!hideNFR} onChange={(e) => setHideNFR(!e.target.checked)} style={{ cursor: 'pointer' }} />
+          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', color: '#475569', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={!hideNFR}
+              onChange={(e) => setHideNFR(!e.target.checked)}
+              style={{ accentColor: '#2563eb', cursor: 'pointer' }}
+            />
             Include NFR Section
           </label>
 
           <button
-            className="btn-secondary"
             onClick={handleToggleAll}
             style={{
-              padding: '6px 12px',
-              fontSize: '0.8rem',
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
+              padding: '6px 12px',
+              borderRadius: '6px',
+              border: '1px solid #cbd5e1',
               background: '#ffffff',
-              color: '#0f172a',
-              border: '1px solid #cbd5e1'
+              fontSize: '0.82rem',
+              color: '#334155',
+              cursor: 'pointer',
+              fontWeight: '500'
             }}
           >
             {allExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
@@ -169,15 +207,17 @@ export default function FunctionalSpecAccordionViewer({ content }) {
         </div>
       </div>
 
-      {/* Accordions List */}
-      <div className="spec-accordions-list" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      {/* Accordion Sections Stack */}
+      <div className="spec-sections-stack" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
         {filteredSections.length === 0 ? (
-          <div style={{ padding: '24px', textAlign: 'center', color: '#64748b' }}>
-            No matching requirements found for "{searchTerm}".
+          <div style={{ padding: '24px', textAlign: 'center', color: '#64748b', fontSize: '0.9rem' }}>
+            No matching functional requirement sections found.
           </div>
         ) : (
           filteredSections.map((sec) => {
             const isOpen = openSections[sec.id] !== undefined ? openSections[sec.id] : allExpanded;
+            const isDetailedSection = sec.title.toLowerCase().includes('detailed functional requirements') || sec.title.toLowerCase().includes('specific functional requirements');
+            
             return (
               <div
                 key={sec.id}
@@ -224,27 +264,33 @@ export default function FunctionalSpecAccordionViewer({ content }) {
                         border: '1px solid #a7f3d0',
                         fontWeight: '600'
                       }}>
-                        {sec.frCount} FRs
+                        {sec.frCount} REQs
                       </span>
                     )}
                   </div>
                 </div>
 
-                {/* Accordion Content Body */}
+                {/* Accordion Content Body inside Single Consolidated Box */}
                 {isOpen && (
                   <div
                     className="spec-accordion-body"
                     style={{
                       padding: '18px 22px',
-                      background: '#ffffff',
+                      background: isDetailedSection ? '#f8fafc' : '#ffffff',
                       color: '#0f172a',
                       fontSize: '0.9rem',
                       lineHeight: '1.6'
                     }}
                   >
-                    <article className="doc-content markdown-body" style={{ color: '#0f172a' }}>
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                        {sec.text}
+                    <article className="doc-content markdown-body" style={{
+                      color: '#0f172a',
+                      background: '#ffffff',
+                      padding: isDetailedSection ? '20px' : '0',
+                      borderRadius: isDetailedSection ? '10px' : '0',
+                      border: isDetailedSection ? '1px solid #e2e8f0' : 'none'
+                    }}>
+                      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                        {deduplicateTableHeaders(sec.text)}
                       </ReactMarkdown>
                     </article>
                   </div>
