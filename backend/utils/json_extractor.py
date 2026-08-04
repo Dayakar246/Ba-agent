@@ -109,6 +109,12 @@ def extract_json_from_llm_response(res_text: Any):
     
     clean = res_text.strip()
     
+    # 0. Sanitize special tokens, reserved tokens, and corrupted code block headers
+    # E.g. ```json BoxFitassistant<|reserved_special_token_109 -> ```json
+    clean = re.sub(r"<\|[a-zA-Z0-9_\-\s:]+\|?>", "", clean)
+    clean = re.sub(r"```\s*json\s*[a-zA-Z_<|]+", "```json", clean, flags=re.I)
+    clean = clean.strip()
+
     # 1. Handle markdown code blocks (stripping any language header like ```json or ```jsoncpp,jsonc...)
     if "```" in clean:
         code_blocks = re.findall(r'```[^\n]*\n([\s\S]*?)\s*```', clean, re.IGNORECASE)

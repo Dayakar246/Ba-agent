@@ -57,4 +57,10 @@ class ExtractionAgent:
         response = await self.llm.call(prompt, provider="azure")
 
         from utils.json_extractor import extract_json_from_llm_response
-        return extract_json_from_llm_response(response)
+        res = extract_json_from_llm_response(response)
+        if isinstance(res, dict) and "error" in res:
+            print("WARN: Primary extraction parse failed due to model token corruption. Retrying with temperature=0.0...")
+            fallback_resp = await self.llm.call(prompt, provider="azure", temperature=0.0)
+            res = extract_json_from_llm_response(fallback_resp)
+
+        return res

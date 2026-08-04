@@ -1947,7 +1947,6 @@ async def download_functional_spec(doc_id: str, include_nfr = True, db: Session 
 
             <div class="title-banner">
                 <h1>{doc_name}</h1>
-                <p>Enterprise Business Discovery & Requirements Package</p>
             </div>
 
             <div class="meta-grid">
