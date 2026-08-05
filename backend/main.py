@@ -1560,16 +1560,26 @@ async def download_functional_spec(doc_id: str, include_nfr = True, db: Session 
     # 1. Functional Specification Section
     if functional_spec:
         spec_text = functional_spec if isinstance(functional_spec, str) else json.dumps(functional_spec, indent=2)
+        
+        # Remove duplicate top-level title header if it repeats cover page title
+        spec_text = re.sub(r"^\s*#\s+[^\n]+\n+", "", spec_text)
+
         if not is_nfr_included:
             # Strip Section 4 Non-Functional Requirements if user unchecks NFR inclusion
             spec_text = re.sub(r"(?:##\s*|#\s*)4\.\s*Non-Functional Requirements.*?(?=(?:##\s*|#\s*)\d+\.|\Z)", "", spec_text, flags=re.S | re.I)
             spec_text = re.sub(r"##\s*4\.\s*Non-Functional Requirements.*", "", spec_text, flags=re.S | re.I)
+            # Re-number Section 5 and Section 6 to Section 4 and Section 5 when NFRs are omitted
+            spec_text = re.sub(r"##\s*5\.\s*", "## 4. ", spec_text)
+            spec_text = re.sub(r"##\s*6\.\s*", "## 5. ", spec_text)
 
         # Terminology & Identifier alignment: REQ-xxx tags & Component Workflow
         spec_text = re.sub(r"\bFR([-\s]?\d+)\b", r"REQ\1", spec_text, flags=re.I)
         spec_text = re.sub(r"\[FR([-\s]?\d+)\]", r"[REQ\1]", spec_text, flags=re.I)
         spec_text = re.sub(r"\bBuilding\s+Information\s+(?:page\s+)?system\b", "Building Information component workflow", spec_text, flags=re.I)
         spec_text = re.sub(r"\bstandalone\s+system\b", "component workflow within the LOB ecosystem", spec_text, flags=re.I)
+
+        # Strip redundant introductory summary lines under Section 3
+        spec_text = re.sub(r"The functional requirements will be grouped into the following sub-system modules:[\s\S]*?(?=\n\n|\n###|\n[A-Z0-9]|\Z)", "", spec_text, flags=re.I)
 
         rendered_spec = markdown.markdown(spec_text, extensions=['extra', 'tables', 'fenced_code'])
 
@@ -1607,14 +1617,17 @@ async def download_functional_spec(doc_id: str, include_nfr = True, db: Session 
 
         rendered_spec = format_export_spec_html(rendered_spec)
 
+        # Output Section 1 directly starting with 1. Executive Summary...
         sections_html.append(f"""
         <div class="section-card page-break">
-            <h2>1. Functional Specification</h2>
             <div class="section-content">
                 {rendered_spec}
             </div>
         </div>
         """)
+
+    # Initialize sequential section counter after Section 1 (which ends at Section 5)
+    sec_counter = 6
 
     # 2. Persona Review & Gap Analysis Section
     if gaps:
@@ -1643,7 +1656,7 @@ async def download_functional_spec(doc_id: str, include_nfr = True, db: Session 
 
             sections_html.append(f"""
             <div class="section-card page-break">
-                <h2>2. Risk & Agentic Council Review (Gap Analysis)</h2>
+                <h2>{sec_counter}. Risk & Agentic Council Review (Gap Analysis)</h2>
                 <div class="section-content">
                     <table>
                         <thead>
@@ -1661,6 +1674,7 @@ async def download_functional_spec(doc_id: str, include_nfr = True, db: Session 
                 </div>
             </div>
             """)
+            sec_counter += 1
 
     # 3. Backlog Hierarchy Section
     if backlog:
@@ -1678,7 +1692,8 @@ async def download_functional_spec(doc_id: str, include_nfr = True, db: Session 
             feat_title = feature.get('title', 'Untitled Feature')
             stories_html = ""
             for story in feature.get('user_stories', []):
-                story_title = story.get('title', 'Untitled Story')
+                story_raw_title = story.get('title', 'Untitled Story')
+                story_clean_title = story_raw_title.replace("User Story:", "").strip()
                 story_desc = story.get('description', '')
                 moscow = story.get('moscow', 'Must Have')
                 ac_list = story.get('acceptance_criteria', [])
@@ -1686,16 +1701,18 @@ async def download_functional_spec(doc_id: str, include_nfr = True, db: Session 
                 formatted_ac_list = []
                 for ac in ac_list:
                     if isinstance(ac, str):
-                        ac_formatted = ac.replace("\n", "<br/>").replace(", When ", "<br/><strong>When</strong> ").replace(", Then ", "<br/><strong>Then</strong> ").replace(" When ", "<br/><strong>When</strong> ").replace(" Then ", "<br/><strong>Then</strong> ")
-                        if ac_formatted.startswith("Given "):
-                            ac_formatted = ac_formatted.replace("Given ", "<strong>Given</strong> ", 1)
-                        formatted_ac_list.append(ac_formatted)
+                        clean_ac = ac.replace("\r\n", "\n")
+                        lines = [line.strip() for line in clean_ac.split("\n") if line.strip()]
+                        formatted_ac = "<br/>".join(lines)
+                        formatted_ac = re.sub(r"(?:,\s*|\s+)(When\s+)", r"<br/>\1", formatted_ac, flags=re.I)
+                        formatted_ac = re.sub(r"(?:,\s*|\s+)(Then\s+)", r"<br/>\1", formatted_ac, flags=re.I)
+                        formatted_ac_list.append(formatted_ac)
                     else:
                         formatted_ac_list.append(str(ac))
-                ac_bullets = "".join([f"<li style='margin-bottom:8px;'>{ac}</li>" for ac in formatted_ac_list]) if formatted_ac_list else "<li><strong>Given</strong> valid input,<br/><strong>When</strong> submitted,<br/><strong>Then</strong> system verifies.</li>"
+                ac_bullets = "".join([f"<li style='margin-bottom:8px; line-height:1.4;'>{ac}</li>" for ac in formatted_ac_list]) if formatted_ac_list else "<li style='margin-bottom:8px; line-height:1.4;'>Given valid input,<br/>When submitted,<br/>Then system verifies.</li>"
 
                 tasks_list = story.get('tasks', [])
-                task_bullets = "".join([f"<li><code style='color:#005599;'>{t}</code></li>" for t in tasks_list]) if tasks_list else ""
+                task_bullets = "".join([f"<li style='margin-bottom:4px;'>{t}</li>" for t in tasks_list]) if tasks_list else ""
 
                 formatted_story_body = story_desc if isinstance(story_desc, str) else str(story_desc)
                 invest_match = re.search(r"As\s+an?\s+[^,.]+,\s*I\s+want\s+to\s+[^,.]+,\s*so\s+that\s+[^.\n]+", formatted_story_body, re.I)
@@ -1707,14 +1724,16 @@ async def download_functional_spec(doc_id: str, include_nfr = True, db: Session 
 
                 stories_html += f"""
                 <div class="story-card" style="margin-bottom:16px; padding:12px; background:#ffffff; border:1px solid #cbd5e1; border-radius:8px;">
-                    <div class="story-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                        <strong style="font-size:1.02rem; color:#0f172a;">📖 {story_title}</strong>
+                    <div class="story-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                        <strong style="font-size:1.02rem; color:#0f172a;">User Story: {story_clean_title}</strong>
                         <span class="badge badge-moscow">{moscow}</span>
                     </div>
-                    <div class="desc-text" style="margin-bottom:12px; color:#334155; font-size:0.92rem;">{formatted_story_body}</div>
-                    <p style="margin-top:8px; margin-bottom:4px; font-weight:600; font-size:0.9rem;">Acceptance Criteria:</p>
-                    <ul style="margin-top:4px; padding-left:20px; font-size:0.88rem;">{ac_bullets}</ul>
-                    {f'<p style="margin-top:8px; margin-bottom:4px; font-weight:600; font-size:0.9rem;">Technical Tasks:</p><ul style="margin-top:4px; padding-left:20px; font-size:0.88rem;">{task_bullets}</ul>' if task_bullets else ''}
+                    <div class="desc-text" style="margin-bottom:12px; color:#334155; font-size:0.92rem;">
+                        <strong>Description:</strong> {formatted_story_body}
+                    </div>
+                    <p style="margin-top:10px; margin-bottom:8px; font-weight:600; font-size:0.9rem; color:#0f172a;">Acceptance Criteria:</p>
+                    <ul style="margin-top:4px; margin-bottom:12px; padding-left:20px; font-size:0.88rem; color:#334155;">{ac_bullets}</ul>
+                    {f'<p style="margin-top:10px; margin-bottom:8px; font-weight:600; font-size:0.9rem; color:#0f172a;">Technical Tasks:</p><ul style="margin-top:4px; padding-left:20px; font-size:0.88rem; color:#334155;">{task_bullets}</ul>' if task_bullets else ''}
                 </div>
                 """
 
@@ -1749,12 +1768,13 @@ async def download_functional_spec(doc_id: str, include_nfr = True, db: Session 
         if backlog_html:
             sections_html.append(f"""
             <div class="section-card page-break">
-                <h2>3. Agile Backlog & Work Breakdown Structure (DevOps Ready)</h2>
+                <h2>{sec_counter}. Agile Backlog & Work Breakdown Structure (DevOps Ready)</h2>
                 <div class="section-content">
                     {backlog_html}
                 </div>
             </div>
             """)
+            sec_counter += 1
 
     # 4. Test Cases & Playwright Automation Section
     if test_cases:
@@ -1799,7 +1819,7 @@ async def download_functional_spec(doc_id: str, include_nfr = True, db: Session 
 
         sections_html.append(f"""
         <div class="section-card page-break">
-            <h2>4. QA Test Suite & Playwright Automation</h2>
+            <h2>{sec_counter}. QA Test Suite & Playwright Automation</h2>
             <div class="section-content">
                 <table>
                     <thead>
@@ -1820,6 +1840,7 @@ async def download_functional_spec(doc_id: str, include_nfr = True, db: Session 
             </div>
         </div>
         """)
+        sec_counter += 1
 
     all_body_content = "\n".join(sections_html)
 
@@ -1935,6 +1956,19 @@ async def download_functional_spec(doc_id: str, include_nfr = True, db: Session 
             .badge-risk {{ background: #fee2e2; color: #991b1b; }}
             .badge-moscow {{ background: #dbeafe; color: #1e40af; }}
             .badge-priority {{ background: #fef3c7; color: #92400e; }}
+            pre, code {{
+                white-space: pre-wrap !important;
+                word-wrap: break-word !important;
+                word-break: break-word !important;
+                max-width: 100% !important;
+                overflow-x: hidden !important;
+                background: #0f172a;
+                color: #e2e8f0;
+                padding: 12px;
+                border-radius: 8px;
+                font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
+                font-size: 0.82rem;
+            }}
             .epic-card {{
                 border: 1px solid #cbd5e1;
                 border-radius: 8px;
