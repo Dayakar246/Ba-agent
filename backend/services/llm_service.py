@@ -247,7 +247,7 @@ class LLMService:
             # print(f"DEBUG: Embedding Request ERROR: {e}")
             return [0.0] * 1536
 
-    async def generate_with_azure(self, prompt: str, agent_name: str = "unknown", tools: list = None, tool_choice: str = "auto", messages: list = None, response_format: dict = None):
+    async def generate_with_azure(self, prompt: str, agent_name: str = "unknown", tools: list = None, tool_choice: str = "auto", messages: list = None, response_format: dict = None, temperature: float = None):
         import time
         from services.telemetry_service import TelemetryService
         
@@ -261,7 +261,9 @@ class LLMService:
         kwargs = {
             "model": self.azure_deployment,
             "messages": messages,
-            "max_tokens": 16384
+            "max_tokens": 16384,
+            "temperature": temperature if temperature is not None else 0.0,
+            "seed": 42
         }
 
         if response_format:
@@ -470,7 +472,7 @@ class LLMService:
             # print(f"DEBUG: NVIDIA API ERROR: {str(e)}")
             return f"NVIDIA Error: {str(e)}"
 
-    async def call(self, prompt: str, provider: str = "azure", agent_name: str = "unknown", tools: list = None, tool_choice: str = "auto", messages: list = None, response_format: dict = None):
+    async def call(self, prompt: str, provider: str = "azure", agent_name: str = "unknown", tools: list = None, tool_choice: str = "auto", messages: list = None, response_format: dict = None, temperature: float = None):
         # Apply PII Guardrails
         from services.guardrail_service import GuardrailService
         guardrail = GuardrailService()
@@ -500,7 +502,7 @@ class LLMService:
         pass
         
         try:
-            if provider == "azure": result = await self.generate_with_azure(safe_prompt, agent_name, tools, tool_choice, safe_messages, response_format)
+            if provider == "azure": result = await self.generate_with_azure(safe_prompt, agent_name, tools, tool_choice, safe_messages, response_format, temperature=temperature)
             elif provider == "kimi": result = await self.generate_with_kimi(safe_prompt, agent_name, tools, tool_choice, safe_messages)
             elif provider == "nvidia": result = await self.generate_with_nvidia(safe_prompt, agent_name, tools, tool_choice, safe_messages)
             else: result = await self.generate_with_groq(safe_prompt, agent_name, tools, tool_choice, safe_messages)

@@ -87,13 +87,23 @@ class FunctionalSpecAgent:
         if isinstance(extraction, dict):
             reqs_list = extraction.get("functional_requirements", [])
 
+        # Sort requirements numerically for 100% deterministic prompt ordering
+        import re
+        def get_req_num(req):
+            rid = str(req.get("id") or req.get("req_id") or "")
+            match = re.search(r"\d+", rid)
+            return int(match.group(0)) if match else 999
+
+        reqs_list.sort(key=get_req_num)
+
         # If less than 15 requirements, run single-pass generation
         if len(reqs_list) <= 15:
             reqs_formatted = ""
             if reqs_list:
                 reqs_formatted = f"\n--- EXTRACTED FUNCTIONAL REQUIREMENTS MATRIX ({len(reqs_list)} Requirements) ---\n"
                 for req in reqs_list:
-                    req_id = req.get("id") or req.get("req_id") or "FR-xxx"
+                    raw_id = req.get("id") or req.get("req_id") or "REQ-001"
+                    req_id = raw_id.replace("FR-", "REQ-") if "FR-" in raw_id else raw_id
                     title = req.get("title") or req.get("name") or ""
                     desc = req.get("description") or req.get("text") or ""
                     reqs_formatted += f"- [{req_id}] {title}: {desc}\n"

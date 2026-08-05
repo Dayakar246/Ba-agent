@@ -310,21 +310,23 @@ const DirectBacklogView = () => {
                         {activeTab === 'backlog' && (
                             <div className="glass-panel" style={{ padding: '2rem', background: 'rgba(15,23,42,0.4)', borderRadius: '16px' }}>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                                    {!result.backlog?.epics ? (
+                                    {!result.backlog?.epics && !result.backlog?.features ? (
                                         <div style={{ color: 'var(--text-secondary)' }}>No backlog data found.</div>
                                     ) : (
                                         <>
                                             {(() => {
-                                                let eCount = 0, fCount = 0, sCount = 0, tCount = 0;
-                                                result.backlog.epics?.forEach(e => {
-                                                  eCount++;
-                                                  e.features?.forEach(f => {
-                                                    fCount++;
+                                                let eCount = result.backlog.epics?.length || 0;
+                                                let fCount = 0, sCount = 0, tCount = 0;
+                                                const featuresToCount = result.backlog.epics 
+                                                    ? result.backlog.epics.flatMap(e => e.features || []) 
+                                                    : (result.backlog.features || []);
+
+                                                fCount = featuresToCount.length;
+                                                featuresToCount.forEach(f => {
                                                     f.user_stories?.forEach(s => {
-                                                      sCount++;
-                                                      if (s.tasks) tCount += s.tasks.length;
+                                                        sCount++;
+                                                        if (s.tasks) tCount += s.tasks.length;
                                                     });
-                                                  });
                                                 });
                                                 
                                                 return (
@@ -350,16 +352,30 @@ const DirectBacklogView = () => {
                                             })()}
 
                                             <div className="backlog-explorer" style={{ maxHeight: '600px', overflowY: 'auto', paddingRight: '12px' }}>
-                                                {result.backlog.epics.map((epic, i) => (
-                                                    <CollapsibleEpic 
-                                                        key={epic.id || i} 
-                                                        epic={epic} 
-                                                        epicIndex={i} 
-                                                        epicsList={result.backlog.epics} 
-                                                        onToggleSelect={handleToggleSelect} 
-                                                        onMoveFeature={handleMoveFeature} 
-                                                    />
-                                                ))}
+                                                {result.backlog.epics ? (
+                                                    result.backlog.epics.map((epic, i) => (
+                                                        <CollapsibleEpic 
+                                                            key={epic.id || i} 
+                                                            epic={epic} 
+                                                            epicIndex={i} 
+                                                            epicsList={result.backlog.epics} 
+                                                            onToggleSelect={handleToggleSelect} 
+                                                            onMoveFeature={handleMoveFeature} 
+                                                        />
+                                                    ))
+                                                ) : (
+                                                    result.backlog.features?.map((feat, i) => (
+                                                        <CollapsibleFeature 
+                                                            key={feat.id || i} 
+                                                            feat={feat} 
+                                                            epicIndex={0} 
+                                                            featIndex={i} 
+                                                            epicsList={[]} 
+                                                            onToggleSelect={handleToggleSelect} 
+                                                            onMoveFeature={handleMoveFeature} 
+                                                        />
+                                                    ))
+                                                )}
                                             </div>
                                         </>
                                     )}

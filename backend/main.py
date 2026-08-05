@@ -1665,72 +1665,91 @@ async def download_functional_spec(doc_id: str, include_nfr = True, db: Session 
     # 3. Backlog Hierarchy Section
     if backlog:
         epics = []
+        top_features = []
         if isinstance(backlog, dict):
             epics = backlog.get('epics', [])
+            top_features = backlog.get('features', [])
         elif isinstance(backlog, list):
             epics = backlog
 
-        if epics:
-            backlog_html = ""
-            for epic in epics:
-                epic_title = epic.get('title', 'Untitled Epic')
-                epic_desc = epic.get('description', '')
+        backlog_html = ""
+
+        def render_feature_html(feature):
+            feat_title = feature.get('title', 'Untitled Feature')
+            stories_html = ""
+            for story in feature.get('user_stories', []):
+                story_title = story.get('title', 'Untitled Story')
+                story_desc = story.get('description', '')
+                moscow = story.get('moscow', 'Must Have')
+                ac_list = story.get('acceptance_criteria', [])
                 
-                features_html = ""
-                for feature in epic.get('features', []):
-                    feat_title = feature.get('title', 'Untitled Feature')
-                    
-                    stories_html = ""
-                    for story in feature.get('user_stories', []):
-                        story_title = story.get('title', 'Untitled Story')
-                        story_desc = story.get('description', '')
-                        moscow = story.get('moscow', 'Must Have')
-                        ac_list = story.get('acceptance_criteria', [])
-                        
-                        ac_bullets = "".join([f"<li>{ac}</li>" for ac in ac_list]) if ac_list else "<li>Valid input submission & verification</li>"
-                        
-                        tasks_list = story.get('tasks', [])
-                        task_bullets = "".join([f"<li><code style='color:#005599;'>{t}</code></li>" for t in tasks_list]) if tasks_list else ""
+                formatted_ac_list = []
+                for ac in ac_list:
+                    if isinstance(ac, str):
+                        ac_formatted = ac.replace("\n", "<br/>").replace(", When ", "<br/><strong>When</strong> ").replace(", Then ", "<br/><strong>Then</strong> ").replace(" When ", "<br/><strong>When</strong> ").replace(" Then ", "<br/><strong>Then</strong> ")
+                        if ac_formatted.startswith("Given "):
+                            ac_formatted = ac_formatted.replace("Given ", "<strong>Given</strong> ", 1)
+                        formatted_ac_list.append(ac_formatted)
+                    else:
+                        formatted_ac_list.append(str(ac))
+                ac_bullets = "".join([f"<li style='margin-bottom:8px;'>{ac}</li>" for ac in formatted_ac_list]) if formatted_ac_list else "<li><strong>Given</strong> valid input,<br/><strong>When</strong> submitted,<br/><strong>Then</strong> system verifies.</li>"
 
-                        formatted_story_body = story_desc if isinstance(story_desc, str) else str(story_desc)
-                        invest_match = re.search(r"As\s+an?\s+[^,.]+,\s*I\s+want\s+to\s+[^,.]+,\s*so\s+that\s+[^.\n]+", formatted_story_body, re.I)
-                        if invest_match:
-                            formatted_story_body = invest_match.group(0).strip()
-                        else:
-                            formatted_story_body = re.sub(r"\*\*\s*(?:Business Context|Workflow Impact|Functional Rules)[^*]*\*\*:?[\s\S]*", "", formatted_story_body, flags=re.I).strip()
-                        formatted_story_body = re.sub(r"^\*\*\s*(?:User Story|Description)[^*]*\*\*:?\s*", "", formatted_story_body, flags=re.I).strip()
+                tasks_list = story.get('tasks', [])
+                task_bullets = "".join([f"<li><code style='color:#005599;'>{t}</code></li>" for t in tasks_list]) if tasks_list else ""
 
-                        stories_html += f"""
-                        <div class="story-card">
-                            <div class="story-header">
-                                <strong>📖 {story_title}</strong>
-                                <span class="badge badge-moscow">{moscow}</span>
-                            </div>
-                            <div class="desc-text"><strong>User Story:</strong> {formatted_story_body}</div>
-                            <p><strong>Acceptance Criteria:</strong></p>
-                            <ul>{ac_bullets}</ul>
-                            {f'<p><strong>Technical Tasks:</strong></p><ul>{task_bullets}</ul>' if task_bullets else ''}
-                        </div>
-                        """
+                formatted_story_body = story_desc if isinstance(story_desc, str) else str(story_desc)
+                invest_match = re.search(r"As\s+an?\s+[^,.]+,\s*I\s+want\s+to\s+[^,.]+,\s*so\s+that\s+[^.\n]+", formatted_story_body, re.I)
+                if invest_match:
+                    formatted_story_body = invest_match.group(0).strip()
+                else:
+                    formatted_story_body = re.sub(r"\*\*\s*(?:Business Context|Workflow Impact|Functional Rules)[^*]*\*\*:?[\s\S]*", "", formatted_story_body, flags=re.I).strip()
+                formatted_story_body = re.sub(r"^\*\*\s*(?:User Story|Description)[^*]*\*\*:?\s*", "", formatted_story_body, flags=re.I).strip()
 
-                    features_html += f"""
-                    <div class="feature-card">
-                        <h3>📦 Feature: {feat_title}</h3>
-                        {stories_html}
+                stories_html += f"""
+                <div class="story-card" style="margin-bottom:16px; padding:12px; background:#ffffff; border:1px solid #cbd5e1; border-radius:8px;">
+                    <div class="story-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <strong style="font-size:1.02rem; color:#0f172a;">📖 {story_title}</strong>
+                        <span class="badge badge-moscow">{moscow}</span>
                     </div>
-                    """
-
-                backlog_html += f"""
-                <div class="epic-card">
-                    <h2>⚡ Epic: {epic_title}</h2>
-                    {f'<p class="desc-text">{epic_desc}</p>' if epic_desc else ''}
-                    {features_html}
+                    <div class="desc-text" style="margin-bottom:12px; color:#334155; font-size:0.92rem;">{formatted_story_body}</div>
+                    <p style="margin-top:8px; margin-bottom:4px; font-weight:600; font-size:0.9rem;">Acceptance Criteria:</p>
+                    <ul style="margin-top:4px; padding-left:20px; font-size:0.88rem;">{ac_bullets}</ul>
+                    {f'<p style="margin-top:8px; margin-bottom:4px; font-weight:600; font-size:0.9rem;">Technical Tasks:</p><ul style="margin-top:4px; padding-left:20px; font-size:0.88rem;">{task_bullets}</ul>' if task_bullets else ''}
                 </div>
                 """
 
+            return f"""
+            <div class="feature-card">
+                <h3>📦 Feature: {feat_title}</h3>
+                {stories_html}
+            </div>
+            """
+
+        if epics:
+            for epic in epics:
+                epic_title = epic.get('title', 'Untitled Epic')
+                epic_desc = epic.get('description', '')
+                features_html = "".join([render_feature_html(f) for f in epic.get('features', [])])
+                backlog_html += f"""
+                <div class="epic-card">
+                    <h2>⚡ Epic: {epic_title}</h2>
+                    <p style="color:#555; font-size:0.9em;">{epic_desc}</p>
+                    {features_html}
+                </div>
+                """
+        elif top_features:
+            features_html = "".join([render_feature_html(f) for f in top_features])
+            backlog_html = f"""
+            <div class="epic-card">
+                <h2>📦 Enterprise Backlog Features</h2>
+                {features_html}
+            </div>
+            """
+
+        if backlog_html:
             sections_html.append(f"""
             <div class="section-card page-break">
-                <h2>3. Enterprise Backlog Tree</h2>
+                <h2>3. Agile Backlog & Work Breakdown Structure (DevOps Ready)</h2>
                 <div class="section-content">
                     {backlog_html}
                 </div>
