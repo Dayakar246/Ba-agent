@@ -1565,11 +1565,48 @@ async def download_functional_spec(doc_id: str, include_nfr = True, db: Session 
             spec_text = re.sub(r"(?:##\s*|#\s*)4\.\s*Non-Functional Requirements.*?(?=(?:##\s*|#\s*)\d+\.|\Z)", "", spec_text, flags=re.S | re.I)
             spec_text = re.sub(r"##\s*4\.\s*Non-Functional Requirements.*", "", spec_text, flags=re.S | re.I)
 
-        # Terminology alignment: Component Workflow vs Standalone System
+        # Terminology & Identifier alignment: REQ-xxx tags & Component Workflow
+        spec_text = re.sub(r"\bFR([-\s]?\d+)\b", r"REQ\1", spec_text, flags=re.I)
+        spec_text = re.sub(r"\[FR([-\s]?\d+)\]", r"[REQ\1]", spec_text, flags=re.I)
         spec_text = re.sub(r"\bBuilding\s+Information\s+(?:page\s+)?system\b", "Building Information component workflow", spec_text, flags=re.I)
         spec_text = re.sub(r"\bstandalone\s+system\b", "component workflow within the LOB ecosystem", spec_text, flags=re.I)
 
         rendered_spec = markdown.markdown(spec_text, extensions=['extra', 'tables', 'fenced_code'])
+
+        # HTML Export Post-Processing: 3-column filter, table consolidation & deduplication
+        def format_export_spec_html(html_str: str) -> str:
+            if not html_str: return ""
+            
+            # 1. Filter <tr> rows to keep ONLY first 3 cells (Req ID, Req Name, Description) -> Drop 4th, 5th, 6th columns
+            def filter_tr(match):
+                tr_open, tr_body, tr_close = match.group(1), match.group(2), match.group(3)
+                cells = re.findall(r'<t[dh][^>]*>[\s\S]*?</t[dh]>', tr_body, re.I)
+                if len(cells) > 3:
+                    return f"{tr_open}{''.join(cells[:3])}{tr_close}"
+                return match.group(0)
+
+            html_str = re.sub(r'(<tr[^>]*>)([\s\S]*?)(</tr>)', filter_tr, html_str, flags=re.I)
+            
+            # 2. Merge duplicate table headers
+            header_seen = False
+            def filter_dup_headers(match):
+                nonlocal header_seen
+                row_html = match.group(0)
+                if "Requirement ID" in row_html or "Requirement Name" in row_html:
+                    if header_seen:
+                        return ""
+                    header_seen = True
+                return row_html
+
+            html_str = re.sub(r'<tr[^>]*>[\s\S]*?</tr>', filter_dup_headers, html_str, flags=re.I)
+
+            # 3. Merge multiple <table> blocks into single consolidated container box
+            html_str = re.sub(r'</table>\s*(?:<h3[^>]*>[\s\S]*?</h3>\s*)?<table[^>]*>\s*(?:<thead>[\s\S]*?</thead>)?\s*(?:<tbody>)?', '', html_str, flags=re.I)
+
+            return html_str
+
+        rendered_spec = format_export_spec_html(rendered_spec)
+
         sections_html.append(f"""
         <div class="section-card page-break">
             <h2>1. Functional Specification</h2>

@@ -9,12 +9,27 @@ export default function FunctionalSpecAccordionViewer({ content }) {
   const [allExpanded, setAllExpanded] = useState(true);
   const [hideNFR, setHideNFR] = useState(false);
 
-  const rawText = typeof content === 'string' ? content : (content ? JSON.stringify(content, null, 2) : '');
+  const extractRawString = (src) => {
+    if (!src) return '';
+    if (typeof src === 'string') return src;
+    if (typeof src === 'object') {
+      if (typeof src.functional_spec === 'string') return src.functional_spec;
+      if (typeof src.master_spec === 'string') return src.master_spec;
+      if (typeof src.spec === 'string') return src.spec;
+      if (typeof src.text === 'string') return src.text;
+    }
+    return JSON.stringify(src, null, 2);
+  };
+
+  const rawText = extractRawString(content);
 
   // Convert FR-xxx tags into REQ-xxx tags strictly in the frontend display
   const formattedText = useMemo(() => {
     if (!rawText) return '';
-    return rawText.replace(/\bFR([-\s]?\d+)\b/gi, 'REQ$1');
+    return rawText
+      .replace(/\bFR([-\s]?\d+)\b/gi, 'REQ$1')
+      .replace(/\[FR([-\s]?\d+)\]/gi, '[REQ$1]')
+      .replace(/FR-(\d+)/gi, 'REQ-$1');
   }, [rawText]);
 
   // Parse markdown content into structured sections based on top-level h1 / h2 headings
@@ -26,15 +41,15 @@ export default function FunctionalSpecAccordionViewer({ content }) {
     let currentSection = null;
 
     lines.forEach((line) => {
-      // Do NOT split sub-modules (e.g. "## 3.1", "### 3.2") into new accordion boxes
-      const isSubModuleHeading = line.match(/^#{1,3}\s+3\.\d+/);
-      const isTopHeading = !isSubModuleHeading && line.match(/^#{1,2}\s+(.+)/);
+      // Do NOT split sub-modules (e.g. "## 3.1", "### 3.2", "## Module 1") into new accordion boxes
+      const isSubModuleHeading = line.match(/^#{1,3}\s+(?:3\.\d+|\d+\.\d+|Module|Building|INTAKE|PREFILL|CONDITIONAL|DESCRIPTION)/i);
+      const isTopHeading = !isSubModuleHeading && line.match(/^#{1,2}\s+(?:\d+\.|\bExecutive\b|\bWorkflow\b|\bDetailed\b|\bSpecific\b|\bNon-Functional\b|\bValidated\b|\bIntegration\b|\bArchitect\b)/i);
 
       if (isTopHeading) {
         if (currentSection && (currentSection.contentLines.length > 0 || currentSection.title)) {
           sections.push(currentSection);
         }
-        const titleText = isTopHeading[1].trim();
+        const titleText = isTopHeading[1] ? isTopHeading[1].trim() : isTopHeading[0].replace(/^#{1,2}\s+/, '').trim();
         currentSection = {
           id: `sec-${sections.length + 1}`,
           title: titleText,
@@ -71,11 +86,13 @@ export default function FunctionalSpecAccordionViewer({ content }) {
     });
   }, [formattedText]);
 
-  // Custom Markdown components to strip 4th & 5th table columns in frontend
+  // Custom Markdown components to strictly strip 4th & 5th table columns in frontend
   const markdownComponents = useMemo(() => ({
     tr: ({ node, children, ...props }) => {
       const childArray = React.Children.toArray(children);
-      const filteredCells = childArray.filter((_, idx) => idx !== 3 && idx !== 4);
+      const elementCells = childArray.filter(child => React.isValidElement(child));
+      // Keep only Column 1 (Req ID), Column 2 (Req Name), Column 3 (Description) -> Drop 4th and 5th columns
+      const filteredCells = elementCells.filter((_, idx) => idx < 3);
       return <tr {...props}>{filteredCells}</tr>;
     }
   }), []);
