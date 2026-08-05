@@ -1688,10 +1688,29 @@ async def download_functional_spec(doc_id: str, include_nfr = True, db: Session 
 
         backlog_html = ""
 
+        def get_story_req_num(story):
+            if not isinstance(story, dict): return 999
+            req_id = story.get("requirement_id") or story.get("title") or ""
+            match = re.search(r"REQ-(\d+)", str(req_id), re.I) or re.search(r"FR-(\d+)", str(req_id), re.I) or re.search(r"\d+", str(req_id))
+            if match:
+                try:
+                    return int(match.group(1)) if match.lastindex and match.lastindex >= 1 else int(match.group(0))
+                except Exception:
+                    return 999
+            return 999
+
+        def get_feature_min_req_num(feature):
+            if not isinstance(feature, dict): return 999
+            stories = feature.get("user_stories", [])
+            if not stories: return 999
+            return min([get_story_req_num(s) for s in stories])
+
         def render_feature_html(feature):
             feat_title = feature.get('title', 'Untitled Feature')
             stories_html = ""
-            for story in feature.get('user_stories', []):
+            stories = feature.get('user_stories', [])
+            stories_sorted = sorted(stories, key=get_story_req_num)
+            for story in stories_sorted:
                 story_raw_title = story.get('title', 'Untitled Story')
                 story_clean_title = story_raw_title.replace("User Story:", "").strip()
                 story_desc = story.get('description', '')
@@ -1748,7 +1767,9 @@ async def download_functional_spec(doc_id: str, include_nfr = True, db: Session 
             for epic in epics:
                 epic_title = epic.get('title', 'Untitled Epic')
                 epic_desc = epic.get('description', '')
-                features_html = "".join([render_feature_html(f) for f in epic.get('features', [])])
+                features = epic.get('features', [])
+                features_sorted = sorted(features, key=get_feature_min_req_num)
+                features_html = "".join([render_feature_html(f) for f in features_sorted])
                 backlog_html += f"""
                 <div class="epic-card">
                     <h2>⚡ Epic: {epic_title}</h2>
@@ -1757,7 +1778,8 @@ async def download_functional_spec(doc_id: str, include_nfr = True, db: Session 
                 </div>
                 """
         elif top_features:
-            features_html = "".join([render_feature_html(f) for f in top_features])
+            features_sorted = sorted(top_features, key=get_feature_min_req_num)
+            features_html = "".join([render_feature_html(f) for f in features_sorted])
             backlog_html = f"""
             <div class="epic-card">
                 <h2>📦 Enterprise Backlog Features</h2>

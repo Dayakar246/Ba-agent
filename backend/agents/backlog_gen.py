@@ -171,20 +171,47 @@ TRD CONTENT:
                 cleaned_tasks.append(task_str)
             story["tasks"] = cleaned_tasks
 
+        def get_story_req_num(story):
+            if not isinstance(story, dict): return 999
+            req_id = story.get("requirement_id") or story.get("title") or ""
+            match = re.search(r"REQ-(\d+)", str(req_id), re.I) or re.search(r"FR-(\d+)", str(req_id), re.I) or re.search(r"\d+", str(req_id))
+            if match:
+                try:
+                    return int(match.group(1)) if match.lastindex and match.lastindex >= 1 else int(match.group(0))
+                except Exception:
+                    return 999
+            return 999
+
+        def get_feature_min_req_num(feature):
+            if not isinstance(feature, dict): return 999
+            stories = feature.get("user_stories", [])
+            if not stories: return 999
+            return min([get_story_req_num(s) for s in stories])
+
         def sanitize_feature(feature):
             if not isinstance(feature, dict): return
             f_title = feature.get("title", "")
-            for story in feature.get("user_stories", []):
+            stories = feature.get("user_stories", [])
+            for story in stories:
                 sanitize_story(story, f_title)
+            # Sort stories numerically by requirement ID (REQ-001 -> REQ-002 -> REQ-003)
+            stories.sort(key=get_story_req_num)
+            feature["user_stories"] = stories
 
         if "epics" in parsed_json and isinstance(parsed_json["epics"], list):
             for epic in parsed_json.get("epics", []):
                 if not isinstance(epic, dict): continue
-                for feature in epic.get("features", []):
+                features = epic.get("features", [])
+                for feature in features:
                     sanitize_feature(feature)
+                features.sort(key=get_feature_min_req_num)
+                epic["features"] = features
         elif "features" in parsed_json and isinstance(parsed_json["features"], list):
-            for feature in parsed_json.get("features", []):
+            features = parsed_json.get("features", [])
+            for feature in features:
                 sanitize_feature(feature)
+            features.sort(key=get_feature_min_req_num)
+            parsed_json["features"] = features
 
         return parsed_json
 
