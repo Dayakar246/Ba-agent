@@ -1578,12 +1578,15 @@ async def download_functional_spec(doc_id: str, include_nfr = True, db: Session 
         spec_text = re.sub(r"\bBuilding\s+Information\s+(?:page\s+)?system\b", "Building Information component workflow", spec_text, flags=re.I)
         spec_text = re.sub(r"\bstandalone\s+system\b", "component workflow within the LOB ecosystem", spec_text, flags=re.I)
 
+        # Ensure NFR sub-bullets are on separate lines for proper HTML rendering
+        spec_text = re.sub(r"-\s*(\*\*[^*]+\*\*:)", r"\n- \1", spec_text)
+
         # Strip redundant introductory summary lines under Section 3
         spec_text = re.sub(r"The functional requirements will be grouped into the following sub-system modules:[\s\S]*?(?=\n\n|\n###|\n[A-Z0-9]|\Z)", "", spec_text, flags=re.I)
 
         rendered_spec = markdown.markdown(spec_text, extensions=['extra', 'tables', 'fenced_code'])
 
-        # HTML Export Post-Processing: 3-column filter, table consolidation & deduplication
+        # HTML Export Post-Processing: 3-column filter & clean table consolidation without losing batches
         def format_export_spec_html(html_str: str) -> str:
             if not html_str: return ""
             
@@ -1597,21 +1600,10 @@ async def download_functional_spec(doc_id: str, include_nfr = True, db: Session 
 
             html_str = re.sub(r'(<tr[^>]*>)([\s\S]*?)(</tr>)', filter_tr, html_str, flags=re.I)
             
-            # 2. Merge duplicate table headers
-            header_seen = False
-            def filter_dup_headers(match):
-                nonlocal header_seen
-                row_html = match.group(0)
-                if "Requirement ID" in row_html or "Requirement Name" in row_html:
-                    if header_seen:
-                        return ""
-                    header_seen = True
-                return row_html
-
-            html_str = re.sub(r'<tr[^>]*>[\s\S]*?</tr>', filter_dup_headers, html_str, flags=re.I)
-
-            # 3. Merge multiple <table> blocks into single consolidated container box
-            html_str = re.sub(r'</table>\s*(?:<h3[^>]*>[\s\S]*?</h3>\s*)?<table[^>]*>\s*(?:<thead>[\s\S]*?</thead>)?\s*(?:<tbody>)?', '', html_str, flags=re.I)
+            # 2. Clean batch markers and merge table blocks smoothly without losing requirement rows
+            html_str = re.sub(r'<h3>BATCH \d+:[^<]*</h3>', '', html_str, flags=re.I)
+            html_str = re.sub(r'<p>--- BATCH \d+:[^<]*</p>', '', html_str, flags=re.I)
+            html_str = re.sub(r'</table>\s*<table[^>]*>\s*(?:<thead>[\s\S]*?</thead>)?\s*(?:<tbody>)?', '', html_str, flags=re.I)
 
             return html_str
 
@@ -1646,7 +1638,7 @@ async def download_functional_spec(doc_id: str, include_nfr = True, db: Session 
                 risk = g.get('risk_level') or g.get('severity') or 'Medium'
                 
                 gap_rows += f"""
-                <tr>
+                <tr style="page-break-inside: avoid;">
                     <td><strong>{title}</strong></td>
                     <td><span class="badge badge-risk">{risk}</span></td>
                     <td>{desc}</td>
@@ -1661,10 +1653,10 @@ async def download_functional_spec(doc_id: str, include_nfr = True, db: Session 
                     <table>
                         <thead>
                             <tr>
-                                <th>Requirement / Gap</th>
-                                <th>Risk Level</th>
-                                <th>Impact Description</th>
-                                <th>Recommendation</th>
+                                <th style="width: 25%;">Requirement / Gap</th>
+                                <th style="width: 15%;">Risk Level</th>
+                                <th style="width: 30%;">Impact Description</th>
+                                <th style="width: 30%;">Recommendation</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -1681,6 +1673,8 @@ async def download_functional_spec(doc_id: str, include_nfr = True, db: Session 
         epics = []
         top_features = []
         if isinstance(backlog, dict):
+            if "backlog" in backlog and isinstance(backlog["backlog"], dict):
+                backlog = backlog["backlog"]
             epics = backlog.get('epics', [])
             top_features = backlog.get('features', [])
         elif isinstance(backlog, list):
@@ -1742,7 +1736,7 @@ async def download_functional_spec(doc_id: str, include_nfr = True, db: Session 
                 formatted_story_body = re.sub(r"^\*\*\s*(?:User Story|Description)[^*]*\*\*:?\s*", "", formatted_story_body, flags=re.I).strip()
 
                 stories_html += f"""
-                <div class="story-card" style="margin-bottom:16px; padding:12px; background:#ffffff; border:1px solid #cbd5e1; border-radius:8px;">
+                <div class="story-card" style="margin-bottom:16px; padding:12px; background:#ffffff; border:1px solid #cbd5e1; border-radius:8px; page-break-inside: avoid;">
                     <div class="story-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
                         <strong style="font-size:1.02rem; color:#0f172a;">User Story: {story_clean_title}</strong>
                         <span class="badge badge-moscow">{moscow}</span>
@@ -1757,7 +1751,7 @@ async def download_functional_spec(doc_id: str, include_nfr = True, db: Session 
                 """
 
             return f"""
-            <div class="feature-card">
+            <div class="feature-card" style="page-break-inside: avoid; margin-bottom:20px;">
                 <h3>📦 Feature: {feat_title}</h3>
                 {stories_html}
             </div>
@@ -1771,7 +1765,7 @@ async def download_functional_spec(doc_id: str, include_nfr = True, db: Session 
                 features_sorted = sorted(features, key=get_feature_min_req_num)
                 features_html = "".join([render_feature_html(f) for f in features_sorted])
                 backlog_html += f"""
-                <div class="epic-card">
+                <div class="epic-card" style="page-break-inside: avoid; margin-bottom:24px;">
                     <h2>⚡ Epic: {epic_title}</h2>
                     <p style="color:#555; font-size:0.9em;">{epic_desc}</p>
                     {features_html}
@@ -1781,7 +1775,7 @@ async def download_functional_spec(doc_id: str, include_nfr = True, db: Session 
             features_sorted = sorted(top_features, key=get_feature_min_req_num)
             features_html = "".join([render_feature_html(f) for f in features_sorted])
             backlog_html = f"""
-            <div class="epic-card">
+            <div class="epic-card" style="page-break-inside: avoid;">
                 <h2>📦 Enterprise Backlog Features</h2>
                 {features_html}
             </div>
@@ -1811,24 +1805,52 @@ async def download_functional_spec(doc_id: str, include_nfr = True, db: Session 
 
         tc_rows = ""
         for tc in tc_list:
+            if not isinstance(tc, dict): continue
             tc_id = tc.get('test_case_id') or tc.get('id') or 'TC-001'
             title = tc.get('title') or tc.get('name') or 'Test Scenario'
             story_title = tc.get('user_story_title') or tc.get('user_story_name') or tc.get('user_story_id') or 'User Story'
             priority = tc.get('priority', 'High')
             test_type = tc.get('test_type', 'Functional')
-            desc = tc.get('description', '')
-            
+            desc = tc.get('description') or tc.get('objective') or ''
+
+            # Sanitize strings to strip escaped quotes, leading commas, or raw code leaks
+            clean_title = re.sub(r'^[":,\s\\]+|[":,\s\\]+$', '', str(title)).strip()
+            clean_story = re.sub(r'^[":,\s\\]+|[":,\s\\]+$', '', str(story_title)).strip()
+            clean_desc = re.sub(r'^[":,\s\\]+|[":,\s\\]+$', '', str(desc)).strip()
+
+            if "page.goto" in clean_title or "async (" in clean_title:
+                code_match = re.search(r"Verify[^\n'\"\\]+", clean_title, re.I)
+                clean_title = code_match.group(0).strip() if code_match else "Verify requirement functionality"
+
+            if "page.goto" in clean_desc or "async (" in clean_desc:
+                code_match = re.search(r"Verify[^\n'\"\\]+", clean_desc, re.I)
+                clean_desc = code_match.group(0).strip() if code_match else "Verify system behavior"
+
             steps = tc.get('steps', [])
-            steps_formatted = "<br/>".join([f"{i+1}. {s}" for i, s in enumerate(steps)]) if isinstance(steps, list) else str(steps)
+            formatted_step_items = []
+            if isinstance(steps, list):
+                for i, s in enumerate(steps):
+                    if isinstance(s, dict):
+                        action = s.get('action') or s.get('step') or s.get('description') or ''
+                        expected = s.get('expected_result') or s.get('expected') or ''
+                        step_str = f"<b>Step {s.get('step_number', i+1)}:</b> {action}"
+                        if expected:
+                            step_str += f"<br/><span style='color:#475569;'><i>Expected:</i> {expected}</span>"
+                        formatted_step_items.append(step_str)
+                    else:
+                        formatted_step_items.append(f"<b>Step {i+1}:</b> {s}")
+                steps_formatted = "<br/><br/>".join(formatted_step_items)
+            else:
+                steps_formatted = str(steps)
 
             tc_rows += f"""
-            <tr>
+            <tr style="page-break-inside: avoid;">
                 <td><strong>{tc_id}</strong></td>
-                <td><strong>{title}</strong><br/><small style="color:#666;">Story: {story_title}</small></td>
+                <td><strong>{clean_title}</strong><br/><small style="color:#64748b;">Story: {clean_story}</small></td>
                 <td><span class="badge badge-priority">{priority}</span></td>
                 <td>{test_type}</td>
-                <td>{desc}</td>
-                <td style="font-size:0.85em;">{steps_formatted}</td>
+                <td>{clean_desc}</td>
+                <td style="font-size:0.85em; max-width:280px; word-wrap:break-word;">{steps_formatted}</td>
             </tr>
             """
 
@@ -1843,15 +1865,15 @@ async def download_functional_spec(doc_id: str, include_nfr = True, db: Session 
         <div class="section-card page-break">
             <h2>{sec_counter}. QA Test Suite & Playwright Automation</h2>
             <div class="section-content">
-                <table>
+                <table style="table-layout: fixed; width: 100%;">
                     <thead>
                         <tr>
-                            <th>ID</th>
-                            <th>Test Title & User Story</th>
-                            <th>Priority</th>
-                            <th>Type</th>
-                            <th>Objective</th>
-                            <th>Steps</th>
+                            <th style="width: 8%;">ID</th>
+                            <th style="width: 22%;">Test Title & User Story</th>
+                            <th style="width: 10%;">Priority</th>
+                            <th style="width: 10%;">Type</th>
+                            <th style="width: 22%;">Objective</th>
+                            <th style="width: 28%;">Steps</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -1877,6 +1899,9 @@ async def download_functional_spec(doc_id: str, include_nfr = True, db: Session 
                 .no-print {{ display: none !important; }}
                 body {{ padding: 0 !important; background: #fff !important; }}
                 .page-break {{ page-break-before: always; }}
+                tr {{ page-break-inside: avoid !important; break-inside: avoid !important; }}
+                h1, h2, h3 {{ page-break-after: avoid !important; break-after: avoid !important; }}
+                .story-card, .feature-card, .epic-card {{ page-break-inside: avoid !important; break-inside: avoid !important; }}
             }}
             body {{
                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
@@ -1939,6 +1964,10 @@ async def download_functional_spec(doc_id: str, include_nfr = True, db: Session 
                 color: #0f172a;
                 font-size: 0.95rem;
             }}
+            h1, h2, h3 {{
+                page-break-after: avoid !important;
+                break-after: avoid !important;
+            }}
             h2 {{
                 color: #1e3a8a;
                 border-bottom: 2px solid #cbd5e1;
@@ -1956,12 +1985,19 @@ async def download_functional_spec(doc_id: str, include_nfr = True, db: Session 
                 border-collapse: collapse;
                 margin: 20px 0;
                 font-size: 0.9rem;
+                page-break-inside: auto;
+            }}
+            tr {{
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
             }}
             th, td {{
                 border: 1px solid #cbd5e1;
                 padding: 10px 14px;
                 text-align: left;
                 vertical-align: top;
+                word-wrap: break-word;
+                overflow-wrap: break-word;
             }}
             th {{
                 background-color: #f1f5f9;
@@ -1978,18 +2014,18 @@ async def download_functional_spec(doc_id: str, include_nfr = True, db: Session 
             .badge-risk {{ background: #fee2e2; color: #991b1b; }}
             .badge-moscow {{ background: #dbeafe; color: #1e40af; }}
             .badge-priority {{ background: #fef3c7; color: #92400e; }}
-            pre, code {{
+            pre, code, pre code {{
                 white-space: pre-wrap !important;
                 word-wrap: break-word !important;
                 word-break: break-word !important;
                 max-width: 100% !important;
-                overflow-x: hidden !important;
-                background: #0f172a;
-                color: #e2e8f0;
-                padding: 12px;
-                border-radius: 8px;
-                font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
-                font-size: 0.82rem;
+                background: #0f172a !important;
+                color: #38bdf8 !important;
+                padding: 14px !important;
+                border-radius: 8px !important;
+                font-family: Consolas, Monaco, 'Andale Mono', monospace !important;
+                font-size: 0.85rem !important;
+                display: block !important;
             }}
             .epic-card {{
                 border: 1px solid #cbd5e1;
@@ -1997,11 +2033,13 @@ async def download_functional_spec(doc_id: str, include_nfr = True, db: Session 
                 padding: 20px;
                 margin-bottom: 24px;
                 background: #fafafa;
+                page-break-inside: avoid !important;
             }}
             .feature-card {{
                 border-left: 4px solid #3b82f6;
                 padding-left: 16px;
                 margin: 16px 0;
+                page-break-inside: avoid !important;
             }}
             .story-card {{
                 background: #ffffff;

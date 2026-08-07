@@ -110,6 +110,7 @@ class ExtractionAgent:
         - Extract EVERY explicit requirement, individual data field, conditional display rule, validation constraint, business rule, and non-functional requirement in this chunk.
         - ABSOLUTELY DO NOT summarize multiple data fields or rules into a single top-level category (e.g., do NOT compress 10 form fields into 'Collect property info'). ITEMIZE EACH FIELD AND RULE INDIVIDUALLY.
         - If a section lists fields (e.g., Address, Year Built, Sprinkler Coverage), output each item as its own distinct requirement.
+        - BUSINESS RULES EXTRACTION: Extract BOTH explicit numbered business rules (e.g. 'Description is mandatory') AND implicit domain rules/conditional logic triggers (e.g. 'If Cooking Operations = Yes, display Hood System', 'If Alcohol Sales = Yes, request percentage of revenue', 'If Hazardous Materials = Yes, display Chemical Classification'). Populate all of these in the "business_rules" array.
 
         Return output strictly in the following JSON format:
         {{
@@ -129,7 +130,7 @@ class ExtractionAgent:
             "clarification_note": ""
           }}],
           "non_functional_requirements": [{{ "id": "NFR-001", "description": "Specific performance, security, compliance rule" }}],
-          "business_rules": [{{ "id": "BR-001", "description": "Specific business or validation rule" }}],
+          "business_rules": [{{ "id": "BR-001", "description": "Explicit or implicit business validation rule, conditional display trigger, or policy constraint" }}],
           "assumptions": [],
           "dependencies": [],
           "open_questions": []

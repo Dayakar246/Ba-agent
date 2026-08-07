@@ -18,73 +18,192 @@ class BacklogGenAgent:
         compressed_trd = TokenOptimizer.compress_trd_for_backlog(trd_content, max_chars=35000)
         
         import re
-        extracted_fr_ids = set(re.findall(r'\[?(FR-\d+)\]?', trd_content))
-        if raw_requirements and isinstance(raw_requirements, list):
+        parsed_from_trd = []
+        matches = re.findall(r'\[(REQ-\d+|FR-\d+)\]\s*([^:\n]+)?:?\s*([^\n]+)?', trd_content)
+        for match in matches:
+            req_id = match[0].upper().replace("FR-", "REQ-")
+            req_title = (match[1] or "").strip()
+            req_desc = (match[2] or "").strip()
+            parsed_from_trd.append({
+                "id": req_id,
+                "title": req_title,
+                "description": req_desc or req_title
+            })
+
+        effective_requirements = []
+        if raw_requirements and isinstance(raw_requirements, list) and len(raw_requirements) > 0:
             for r in raw_requirements:
                 if isinstance(r, dict):
-                    rid = r.get("id") or r.get("req_id")
-                    if rid: extracted_fr_ids.add(str(rid).upper())
+                    raw_id = r.get("id") or r.get("req_id") or ""
+                    req_id = raw_id.replace("FR-", "REQ-") if "FR-" in raw_id else raw_id
+                    effective_requirements.append({
+                        "id": req_id,
+                        "title": r.get("title") or r.get("name") or "",
+                        "description": r.get("description") or r.get("text") or ""
+                    })
 
-        fr_tags = sorted(list(extracted_fr_ids))
-        fr_count_mandate = ""
+        if len(parsed_from_trd) > len(effective_requirements):
+            effective_requirements = parsed_from_trd
+
+        fr_tags = [r["id"] for r in effective_requirements]
+        fr_tags = sorted(list(set(fr_tags)))
+
         raw_reqs_section = ""
+        if effective_requirements:
+            raw_reqs_section = f"\n\nCOMPLETE EXTRACTED FUNCTIONAL REQUIREMENTS ARRAY ({len(effective_requirements)} Requirements):\n"
+            for r in effective_requirements:
+                raw_reqs_section += f"- [{r['id']}] {r['title']}: {r['description']}\n"
 
-        if raw_requirements and isinstance(raw_requirements, list) and len(raw_requirements) > 0:
-            raw_reqs_section = f"\n\nCOMPLETE EXTRACTED FUNCTIONAL REQUIREMENTS ARRAY ({len(raw_requirements)} Requirements):\n"
-            for r in raw_requirements[:120]:
-                if isinstance(r, dict):
-                    rid = r.get("id") or r.get("req_id") or "FR-xxx"
-                    title = r.get("title") or r.get("name") or ""
-                    desc = r.get("description") or r.get("text") or ""
-                    raw_reqs_section += f"- [{rid}] {title}: {desc}\n"
+        # --- SOLUTION: HIGH-LEVEL FEATURE CLUSTERING ARCHITECTURE (5 to 8 BUSINESS CAPABILITY FEATURES) ---
+        if len(effective_requirements) > 0:
+            print(f" [BacklogGenAgent] Executing High-Level Feature Clustering Architecture for {len(effective_requirements)} Requirements...")
+            import asyncio
+            from utils.json_extractor import extract_json_from_llm_response
 
-        if len(fr_tags) <= 10:
-            scope_instruction = f"""
-DYNAMIC BACKLOG ARCHITECTURE (FOCUSED COMPONENT):
-The input document is a focused requirement package containing {len(fr_tags)} requirements ({', '.join(fr_tags[:10])}).
-1. DYNAMIC FEATURE CLUSTERING: Cluster requirements by functional sub-system capability into 2 to 4 distinct Features (e.g. "Occupancy Intake Module", "360Value Prefill & Integration Engine"). Group 2 or more related User Stories under each Feature based on domain similarity.
-2. NO ARTIFICIAL EPICS: If the scope is a single LOB component workflow, omit the "epics" key completely and output top-level "features" array directly in the JSON.
-3. NON-REDUNDANT NAMING: Feature titles represent functional modules, while User Story titles represent specific requirement capabilities (e.g. "[REQ-001] Occupancy Selection Dropdown"). A Feature title and User Story title MUST NEVER be identical.
-"""
-        elif len(fr_tags) >= 15:
-            scope_instruction = f"""
-CRITICAL PROPORTIONAL SCALING MANDATE:
-The input document contains {len(fr_tags)} Functional Requirements.
-Organically group Epics by Functional Domain Sub-Systems. Each Feature must group MULTIPLE related User Stories. Feature title and User Story title MUST NEVER be identical.
-"""
-        else:
-            scope_instruction = """
-DYNAMIC BACKLOG ARCHITECTURE:
-Infer the appropriate hierarchy from source requirements. Cluster requirements into 2 to 4 Features, grouping multiple User Stories under each Feature. Feature title and User Story title MUST NEVER be identical.
-"""
+            all_req_items_text = "\n".join([f"- [{r['id']}] {r['title']}: {r['description']}" for r in effective_requirements])
+            all_req_ids = [r['id'] for r in effective_requirements]
 
-        nfr_section = f"\n\nNON-FUNCTIONAL REQUIREMENTS & BUSINESS RULES:\n{nfr_content[:15000]}" if nfr_content else ""
-        reviews_section = f"\n\nAGENTIC COUNCIL REVIEWS (Security, UX, QA, Architecture):\n{json.dumps(council_reviews, indent=2)[:15000]}" if council_reviews else ""
-        
-        prompt = f"""
+            # Step 1: Cluster requirements into 5 to 8 High-Level Business Capability Features
+            cluster_prompt = f"""
 {skill_prompt}
 
-ENTERPRISE PRODUCTION INSTRUCTION:
-Architect a production-grade Azure DevOps backlog from the provided inputs below.
+ACT AS AN ENTERPRISE AGILE SOLUTION ARCHITECT.
+You are given {len(effective_requirements)} Functional Requirements for a Commercial Property / Insurance System.
 
-STRATEGIC DOMAIN RULES:
-1. ADAPTIVE HIERARCHY & GROUPING: Cluster requirements into 2 to 4 Features based on functional domain similarity. Feature titles must represent sub-system modules, while User Story titles represent specific requirement capabilities (e.g. "[REQ-001] Occupancy Selection Dropdown"). A Feature title and User Story title MUST NEVER be identical.
-2. USER STORY FORMAT: User Story TITLE must be a CONCISE 3 to 7-word feature title with tag (e.g. "[REQ-001] Occupancy Selection Dropdown"). The DESCRIPTION field must contain ONLY the formal statement "As a [persona], I want to [action], so that [value]".
-3. ACCEPTANCE CRITERIA (BDD): Every acceptance criterion MUST follow Behavior-Driven Development Gherkin syntax with Given, When, Then on separate lines:
-"Given [precondition]
-When [user action]
-Then [expected system behavior]"
-4. TECHNICAL TASKS: Every User Story MUST include specific, actionable engineering tasks.
-5. RELEASE PHASING: Assign MoSCoW priorities (Must, Should, Could, Won't) and Release Phasing (MVP, Phase 2, Phase 3).
+REQUIREMENTS LIST:
+{all_req_items_text}
 
-{scope_instruction}
+CRITICAL MANDATE:
+Group ALL {len(effective_requirements)} requirements into EXACTLY 5 to 8 HIGH-LEVEL BUSINESS CAPABILITY FEATURES.
+Each Feature MUST represent a broad business capability or functional sub-system (e.g., 'Property Intake & Management', 'Fire Protection & Life Safety Systems', 'Building Systems & Facility Operations', 'Warehouse & Storage Operations', 'Manufacturing Operations', 'Security & Access Control').
+DO NOT create fine-grained or field-level features. Create 5 to 8 broad, high-level business capabilities.
 
-TRD CONTENT:
-{compressed_trd}
-{raw_reqs_section}
-{nfr_section}
-{reviews_section}
+Return valid JSON in this exact structure:
+{{
+  "feature_clusters": [
+    {{
+      "feature_title": "High-Level Business Capability Title",
+      "description": "Comprehensive capability overview describing this functional domain.",
+      "requirement_ids": ["REQ-001", "REQ-002", "REQ-003"]
+    }}
+  ]
+}}
 """
+            print(" [BacklogGenAgent] Step 1: Clustering requirements into 5-8 High-Level Features...")
+            cluster_resp = await self.llm.call(cluster_prompt, provider="azure", agent_name="BacklogArchitect_Cluster")
+            cluster_data = extract_json_from_llm_response(cluster_resp)
+
+            feature_clusters = []
+            if isinstance(cluster_data, dict) and "feature_clusters" in cluster_data and isinstance(cluster_data["feature_clusters"], list):
+                feature_clusters = cluster_data["feature_clusters"]
+
+            # Fallback if clustering failed or returned empty
+            if not feature_clusters:
+                print(" [BacklogGenAgent] Cluster fallback triggered: Partitioning into domain capability buckets.")
+                bucket_size = max(4, (len(effective_requirements) + 5) // 6)
+                domain_names = ["Property Management & Intake", "Fire Protection & Safety", "Warehouse & Storage Operations", "Facility & Building Systems", "Manufacturing & Industrial Operations", "Security & Access Control"]
+                for i in range(0, len(effective_requirements), bucket_size):
+                    chunk_reqs = effective_requirements[i:i + bucket_size]
+                    chunk_ids = [r['id'] for r in chunk_reqs]
+                    d_title = domain_names[(i // bucket_size) % len(domain_names)]
+                    feature_clusters.append({
+                        "feature_title": d_title,
+                        "description": f"Domain capability for {d_title}.",
+                        "requirement_ids": chunk_ids
+                    })
+
+            # Ensure 100% of requirement IDs are assigned to a cluster
+            assigned_ids = set()
+            for fc in feature_clusters:
+                assigned_ids.update(fc.get("requirement_ids", []))
+
+            unassigned = [r for r in effective_requirements if r['id'] not in assigned_ids]
+            if unassigned and feature_clusters:
+                feature_clusters[-1].setdefault("requirement_ids", []).extend([r['id'] for r in unassigned])
+
+            print(f" [BacklogGenAgent] Step 1 Complete: Created {len(feature_clusters)} High-Level Feature Clusters.")
+
+            # Step 2: Generate 3 to 8 User Stories per Feature Cluster in parallel
+            req_by_id = {r['id']: r for r in effective_requirements}
+
+            async def generate_stories_for_cluster(fc):
+                f_title = fc.get("feature_title") or "Business Capability Feature"
+                f_desc = fc.get("description") or ""
+                fc_req_ids = fc.get("requirement_ids", [])
+                fc_reqs = [req_by_id[rid] for rid in fc_req_ids if rid in req_by_id]
+                if not fc_reqs: return None
+
+                fc_reqs_text = "\n".join([f"- [{r['id']}] {r['title']}: {r['description']}" for r in fc_reqs])
+
+                story_prompt = f"""
+{skill_prompt}
+
+ACT AS A SENIOR AGILE BUSINESS ANALYST.
+You are writing User Stories for the High-Level Feature: "{f_title}".
+
+FEATURE DESCRIPTION: {f_desc}
+
+MAPPED FUNCTIONAL REQUIREMENTS ({len(fc_reqs)} items):
+{fc_reqs_text}
+
+CRITICAL MANDATES:
+1. Generate between 3 and 8 User Stories for this Feature capability.
+2. Group related requirements into User Stories (Many-to-One, e.g. "[REQ-001, REQ-002, REQ-003] Prefill, Edit & Retain Property Data") OR split complex requirements (One-to-Many).
+3. Ensure EVERY requirement ID in this feature list ({', '.join([r['id'] for r in fc_reqs])}) is explicitly tagged in at least one User Story title.
+4. User Story Title format: "[REQ-xxx, REQ-yyy] Short Story Title".
+5. User Story Description format: "As a [persona], I want to [action], so that [value]".
+6. Acceptance Criteria: Gherkin format (Given, When, Then).
+7. Tasks: Engineering technical tasks.
+
+Return valid JSON:
+{{
+  "title": "{f_title}",
+  "description": "{f_desc}",
+  "user_stories": [
+    {{
+      "requirement_id": "REQ-001, REQ-002",
+      "title": "[REQ-001, REQ-002] Story Title",
+      "description": "As a [persona], I want to [action], so that [value].",
+      "acceptance_criteria": ["Given precondition\\nWhen action\\nThen result"],
+      "story_points": 5,
+      "priority": "1",
+      "moscow": "Must Have",
+      "release_phase": "MVP",
+      "tasks": ["Task 1", "Task 2"]
+    }}
+  ]
+}}
+"""
+                resp = await self.llm.call(story_prompt, provider="azure", agent_name=f"BacklogArchitect_Feature_{f_title[:15]}")
+                parsed_story = extract_json_from_llm_response(resp)
+                if isinstance(parsed_story, dict) and "user_stories" in parsed_story:
+                    return {
+                        "title": f_title,
+                        "description": f_desc,
+                        "user_stories": parsed_story.get("user_stories", [])
+                    }
+                return {
+                    "title": f_title,
+                    "description": f_desc,
+                    "user_stories": []
+                }
+
+            story_tasks = [generate_stories_for_cluster(fc) for fc in feature_clusters]
+            generated_features = await asyncio.gather(*story_tasks)
+            generated_features = [f for f in generated_features if f and isinstance(f, dict)]
+
+            consolidated_backlog = {
+                "epics": [
+                    {
+                        "title": "Commercial Property Risk Assessment System",
+                        "description": "Enterprise Line of Business intake and risk assessment platform.",
+                        "features": generated_features
+                    }
+                ]
+            }
+            sanitized = self.sanitize_backlog_json(consolidated_backlog)
+            print(f" [BacklogGenAgent] High-Level Backlog Generation Completed! Generated {len(generated_features)} Features with structured User Stories.")
+            return sanitized
 
         max_retries = 2
         for attempt in range(max_retries):

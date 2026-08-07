@@ -189,7 +189,7 @@ CRITICAL MANDATE:
 - Format each requirement into a clean Markdown Table containing:
   | Requirement ID | Requirement Title | Business Description & Validation Rules | Input Fields | Expected Output | Priority |
 - Explicitly tag every requirement in bracketed format (e.g. [{batch_start_id}]).
-- Output ONLY the Markdown table and section header for Batch {chunk_idx + 1}. No conversational filler.
+- Output ONLY the Markdown table for Batch {chunk_idx + 1}. Do NOT include any section header, title, or conversational filler before or after the table.
 """
             return await self.llm.call(chunk_prompt, provider="azure", agent_name=f"FunctionalSpecArchitect_Chunk_{chunk_idx+1}")
 
