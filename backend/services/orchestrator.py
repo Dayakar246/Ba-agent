@@ -77,7 +77,7 @@ class RequifyOrchestrator:
         finally:
             db.close()
 
-    async def run_extraction(self, document_id: str, text: str, context_type: str = "document"):
+    async def run_extraction(self, document_id: str, text: str, context_type: str = "document", file_hash: str = None):
         db = SessionLocal()
         try:
             project = db.query(ProjectStateModel).filter(ProjectStateModel.document_id == document_id).first()
@@ -109,8 +109,11 @@ class RequifyOrchestrator:
                 # --- PHASE 3: Memory Indexing ---
                 project.update_status("INDEXING", "Indexing requirements into Organizational Memory (Azure AI Search).")
                 db.commit()
-                indexed_count = await self.knowledge_agent.ingest_project_requirements(document_id, result, lob=project.lob)
-                print(f"--- [INFO] Indexed {indexed_count} requirements to Azure Memory. ---")
+                deterministic_proj_id = f"doc_{file_hash[:16]}" if file_hash else document_id
+                indexed_count = await self.knowledge_agent.ingest_project_requirements(
+                    document_id, result, lob=project.lob, project_id=deterministic_proj_id
+                )
+                print(f"--- [INFO] Indexed/Upserted {indexed_count} requirements to Azure Memory (Key: {deterministic_proj_id}). ---")
 
                 # --- PHASE 4: Audit Logging (Governance) ---
                 AuditService.log_action(

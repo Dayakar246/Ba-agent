@@ -264,19 +264,28 @@ async def ingest_document(
     lob: str = Form("General"),
     db: Session = Depends(get_db)
 ):
+    import hashlib
+
+    # 1. Compute SHA-256 file hash for deterministic Azure AI Search vector upserting
+    file_bytes = await file.read()
+    file_hash = hashlib.sha256(file_bytes).hexdigest()
+    
     doc_id = str(uuid.uuid4())
     temp_path = f"temp_{doc_id}_{file.filename}"
-    
-    print(f"\n" + "="*50)
-    print(f" [API: /ingest] STARTING: Ingesting '{file.filename}'")
-    print(f"   - Channel: {channel} | LOB: {lob} | DocID: {doc_id}")
-    print("="*50)
-    
+
+    print(f"\n" + "="*70)
+    print(f" [API: /ingest] STARTING: Full Pipeline Ingestion for '{file.filename}'")
+    print(f"   - Channel  : {channel} | LOB: {lob} | DocID: {doc_id}")
+    print(f"   - File Size: {len(file_bytes)} bytes")
+    print(f"   - SHA-256  : {file_hash}")
+    print(f"   - Mode     : FULL PIPELINE EXECUTION (Document Intelligence + LLM + Vector Upsert)")
+    print("="*70)
+
     with open(temp_path, "wb") as buffer:
-        buffer.write(await file.read())
+        buffer.write(file_bytes)
     
     try:
-        # 1. Extract content based on channel and file type
+        # Extract content based on channel and file type
         text_content = ""
         
         if channel == "visual":
@@ -305,9 +314,9 @@ async def ingest_document(
         storage_service.upload_file(temp_path, file.filename)
         orchestrator.get_or_create_project(doc_id, lob=lob)
         
-        # Run context-aware extraction
+        # Run context-aware extraction passing file_hash for deterministic vector keying
         print(f" [API: /ingest] Triggering Orchestrator for extraction analysis...")
-        orchestrator_result = await orchestrator.run_extraction(doc_id, text_content, context_type=channel)
+        orchestrator_result = await orchestrator.run_extraction(doc_id, text_content, context_type=channel, file_hash=file_hash)
         data = orchestrator_result["extraction"]
         ambiguity_report = orchestrator_result.get("ambiguity_report", {})
         
@@ -315,7 +324,7 @@ async def ingest_document(
         if isinstance(data, dict) and "error" in data:
             raise HTTPException(status_code=400, detail=f"Extraction Error: {data['error']} | Raw: {data.get('raw', '')[:200]}")
 
-        # 2. Persist Document to DB
+        # Persist Document to DB
         new_doc = Document(
             id=doc_id,
             name=file.filename,
@@ -323,14 +332,18 @@ async def ingest_document(
             file_path=temp_path,
             content=text_content,
             status="ingested",
-            meta={"extraction": data, "ambiguity_report": ambiguity_report},
+            meta={
+                "file_hash": file_hash,
+                "extraction": data,
+                "ambiguity_report": ambiguity_report
+            },
             project_id=lob
         )
         db.add(new_doc)
         db.commit()
         
-        print(f" [API: /ingest] COMPLETED Successfully! Document stored in DB.")
-        return {"document_id": doc_id, "extraction": data, "ambiguity_report": ambiguity_report}
+        print(f" [API: /ingest] COMPLETED Successfully! Full pipeline executed & Azure Search vectors upserted.")
+        return {"document_id": doc_id, "extraction": data, "ambiguity_report": ambiguity_report, "file_hash": file_hash}
     except Exception as e:
         db.rollback()
         print(f" [API: /ingest] ERROR: {str(e)}")

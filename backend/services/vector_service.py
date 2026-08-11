@@ -71,15 +71,22 @@ class VectorSearchService:
         except Exception as e:
             print(f"ERROR creating index '{self.index_name}': {e}")
 
-    async def index_requirement(self, doc_id: str, req_id: str, content: str, lob: str, vector: list):
+    async def index_requirement(self, doc_id: str, req_id: str, content: str, lob: str, vector: list, project_id: str = None):
         """
-        Uploads a single requirement to the organizational memory.
+        Uploads/upserts a single requirement into organizational memory using deterministic keys.
+        Re-uploading the same project overwrites existing documents in-place instead of creating duplicates.
         """
         if not self.endpoint: return
         self._ensure_initialized()
+        import re
         
+        base_key = project_id or doc_id or "default_project"
+        safe_base_key = re.sub(r'[^a-zA-Z0-9_-]', '_', str(base_key))
+        safe_req_id = re.sub(r'[^a-zA-Z0-9_-]', '_', str(req_id))
+        azure_doc_key = f"{safe_base_key}_{safe_req_id}"
+
         document = {
-            "id": f"{doc_id}-{req_id}".replace("/", "-"),
+            "id": azure_doc_key,
             "content": content,
             "requirement_id": req_id,
             "doc_id": doc_id,
@@ -91,8 +98,27 @@ class VectorSearchService:
         try:
             self.search_client.upload_documents(documents=[document])
         except Exception as e:
-            print(f"ERROR indexing document: {e}")
+            print(f"ERROR indexing document key '{azure_doc_key}': {e}")
             raise e
+
+    async def delete_project_requirements(self, doc_id: str):
+        """
+        Deletes all historical requirements associated with a specific doc_id from Azure AI Search.
+        """
+        if not self.endpoint: return
+        self._ensure_initialized()
+        try:
+            results = self.search_client.search(
+                search_text="*",
+                filter=f"doc_id eq '{doc_id}'",
+                select=["id"]
+            )
+            docs_to_delete = [{"id": r["id"]} for r in results]
+            if docs_to_delete:
+                self.search_client.delete_documents(documents=docs_to_delete)
+                print(f"SUCCESS: Purged {len(docs_to_delete)} old vector documents for doc_id: {doc_id}")
+        except Exception as e:
+            print(f"ERROR purging old document vectors for doc_id {doc_id}: {e}")
 
     async def search_memory(self, query_vector: list, top: int = 3):
         """
