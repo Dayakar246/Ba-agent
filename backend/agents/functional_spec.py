@@ -186,6 +186,10 @@ You are writing Section 3 (Specific Functional Requirements Matrix) for Batch {c
 CRITICAL MANDATE:
 - You MUST document EVERY requirement in this batch ({batch_start_id} to {batch_end_id}) in order.
 - ABSOLUTELY DO NOT SKIP ANY REQUIREMENT ID IN THIS BATCH.
+- PRIORITIZATION MANDATE: Assign priorities based on domain impact:
+  * High / Must Have: Core validation rules, mandatory fields, security/compliance rules, primary transaction/adjudication workflows.
+  * Medium / Should Have: Prefill automation, manual field override options, UI convenience helpers, conditional field visibility.
+  * Low / Could Have: Export enhancements, optional reporting, cosmetic formatting.
 - Format each requirement into a clean Markdown Table containing:
   | Requirement ID | Requirement Title | Business Description & Validation Rules | Input Fields | Expected Output | Priority |
 - Explicitly tag every requirement in bracketed format (e.g. [{batch_start_id}]).

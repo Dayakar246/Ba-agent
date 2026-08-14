@@ -234,12 +234,28 @@ Return valid JSON:
             return parsed_json
 
         import re
+
+        def sort_requirement_tags(req_str: str) -> str:
+            """
+            Parses 'REQ-012, REQ-005, REQ-006, REQ-009, REQ-010'
+            and returns numerically sorted 'REQ-005, REQ-006, REQ-009, REQ-010, REQ-012'.
+            """
+            found_nums = re.findall(r"(?:REQ|FR)-(\d+)", str(req_str), re.I)
+            if not found_nums:
+                return req_str
+            
+            sorted_nums = sorted(list(set([int(n) for n in found_nums])))
+            return ", ".join([f"REQ-{str(n).zfill(3)}" for n in sorted_nums])
+
         def sanitize_story(story, feature_title=""):
             if not isinstance(story, dict): return
             title = story.get("title", "")
             desc = story.get("description", "")
             raw_req_id = story.get("requirement_id") or ""
             req_id = raw_req_id.replace("FR-", "REQ-") if "FR-" in raw_req_id else raw_req_id
+            
+            if req_id:
+                req_id = sort_requirement_tags(req_id)
             story["requirement_id"] = req_id
 
             # 1. Clean Title if LLM put "As a ..." in title
@@ -257,6 +273,13 @@ Return valid JSON:
                 story["title"] = clean_title
             elif req_id and "FR-" in title:
                 story["title"] = title.replace("FR-", "REQ-")
+
+            # Re-order requirement tags inside title bracket numerically
+            title_text = story.get("title", "")
+            bracket_match = re.search(r"^\[(.*?)\]", title_text)
+            if bracket_match:
+                sorted_tags = sort_requirement_tags(bracket_match.group(1))
+                story["title"] = re.sub(r"^\[.*?\]", f"[{sorted_tags}]", title_text)
 
             # 2. Extract clean INVEST statement ONLY
             full_text = f"{story.get('title', '')}\n{desc}"
@@ -293,10 +316,10 @@ Return valid JSON:
         def get_story_req_num(story):
             if not isinstance(story, dict): return 999
             req_id = story.get("requirement_id") or story.get("title") or ""
-            match = re.search(r"REQ-(\d+)", str(req_id), re.I) or re.search(r"FR-(\d+)", str(req_id), re.I) or re.search(r"\d+", str(req_id))
-            if match:
+            nums = re.findall(r"(?:REQ|FR)-(\d+)", str(req_id), re.I) or re.findall(r"\d+", str(req_id))
+            if nums:
                 try:
-                    return int(match.group(1)) if match.lastindex and match.lastindex >= 1 else int(match.group(0))
+                    return min([int(n) for n in nums])
                 except Exception:
                     return 999
             return 999

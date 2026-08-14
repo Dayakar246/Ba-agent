@@ -5,6 +5,7 @@ from agents.analysis import AnalysisAgent
 from agents.functional_spec import FunctionalSpecAgent
 from agents.backlog_gen import BacklogGenAgent
 from agents.test_case_agent import TestCaseAgent
+from agents.critic_agent import CriticAgent
 
 # Initialize standard agents
 extraction_agent = ExtractionAgent()
@@ -12,6 +13,7 @@ analysis_agent = AnalysisAgent()
 functional_spec_agent = FunctionalSpecAgent()
 backlog_agent = BacklogGenAgent()
 test_case_agent = TestCaseAgent()
+critic_agent = CriticAgent()
 
 async def extraction_node(state: AnalysisState) -> Dict[str, Any]:
     print("Graph: Executing Extraction Node")
@@ -45,7 +47,52 @@ async def spec_node(state: AnalysisState) -> Dict[str, Any]:
         extraction=extraction,
         raw_brd_text=original_text
     )
-    return {"functional_spec": spec}
+
+    # Perform Adversarial QA Review via CriticAgent
+    critic_res = await critic_agent.review_artifact(
+        artifact_type="Functional Spec",
+        content=spec,
+        source_brd=original_text,
+        extraction=extraction
+    )
+
+    # --- AUTONOMOUS SELF-CORRECTION REFLECTION LOOP ---
+    iteration = 0
+    max_reflections = 1
+    while critic_res.get("status") == "REQUEST_CORRECTION" and critic_res.get("confidence_score", 1.0) < 0.85 and iteration < max_reflections:
+        iteration += 1
+        suggestion = critic_res.get("critic_suggestion", "")
+        print(f"\n================================================================================")
+        print(f"🔄 [REFLECTION LOOP {iteration}/{max_reflections}] Critic requested corrections (Score: {critic_res.get('confidence_score')})")
+        print(f" ► Feedback: \"{suggestion[:140]}...\"" if len(suggestion) > 140 else f" ► Feedback: \"{suggestion}\"")
+        print(f" ► Triggering self-correction re-generation in FunctionalSpecAgent...")
+        print(f"================================================================================")
+
+        # Re-run FunctionalSpecAgent with Critic feedback
+        spec = await functional_spec_agent.generate_spec(
+            extraction=extraction,
+            raw_brd_text=original_text,
+            feedback=suggestion
+        )
+        print(f" ↳ Self-corrected Functional Spec re-assembled cleanly.")
+
+        # Re-audit updated spec via CriticAgent
+        print(f" ↳ Re-auditing updated Functional Spec via CriticAgent...")
+        critic_res = await critic_agent.review_artifact(
+            artifact_type="Functional Spec (Self-Corrected)",
+            content=spec,
+            source_brd=original_text,
+            extraction=extraction
+        )
+
+        print(f"\n================================================================================")
+        print(f"✅ [REFLECTION LOOP COMPLETE] Re-audit Decision")
+        print(f" ► Final Status    : {critic_res.get('status')}")
+        print(f" ► Final Confidence: {critic_res.get('confidence_score')}")
+        print(f" ► Total Findings  : {len(critic_res.get('findings', []))}")
+        print(f"================================================================================\n")
+
+    return {"functional_spec": spec, "critic_review": critic_res}
 
 async def reviews_node(state: AnalysisState) -> Dict[str, Any]:
     print("Graph: Executing Persona Reviews Node")

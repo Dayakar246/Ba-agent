@@ -111,6 +111,10 @@ class ExtractionAgent:
         - ABSOLUTELY DO NOT summarize multiple data fields or rules into a single top-level category (e.g., do NOT compress 10 form fields into 'Collect property info'). ITEMIZE EACH FIELD AND RULE INDIVIDUALLY.
         - If a section lists fields (e.g., Address, Year Built, Sprinkler Coverage), output each item as its own distinct requirement.
         - BUSINESS RULES EXTRACTION: Extract BOTH explicit numbered business rules (e.g. 'Description is mandatory') AND implicit domain rules/conditional logic triggers (e.g. 'If Cooking Operations = Yes, display Hood System', 'If Alcohol Sales = Yes, request percentage of revenue', 'If Hazardous Materials = Yes, display Chemical Classification'). Populate all of these in the "business_rules" array.
+        - REQUIREMENT PRIORITIZATION GUIDELINES (When BRD has no explicit priorities):
+          * High: Core validation rules, mandatory fields, security/compliance rules, primary transaction/adjudication workflows.
+          * Medium: Prefill automation, manual field override options, UI convenience helpers, conditional field visibility.
+          * Low: Export enhancements, optional reporting, cosmetic formatting.
 
         Return output strictly in the following JSON format:
         {{
@@ -198,7 +202,8 @@ class ExtractionAgent:
                             "description": desc,
                             "priority": fr.get("priority") or "Medium",
                             "ambiguity_flag": bool(fr.get("ambiguity_flag", False)),
-                            "clarification_note": fr.get("clarification_note") or ""
+                            "clarification_note": fr.get("clarification_note") or "",
+                            "source_chunk_idx": fr.get("source_chunk_idx", idx)
                         })
 
             # NFR Deduplication
@@ -208,7 +213,10 @@ class ExtractionAgent:
                     norm = normalize(desc)
                     if norm and norm not in seen_nfr_norms:
                         seen_nfr_norms.add(norm)
-                        all_nfr.append({"description": desc})
+                        all_nfr.append({
+                            "description": desc,
+                            "source_chunk_idx": nfr.get("source_chunk_idx", idx)
+                        })
 
             # Business Rules Deduplication
             for br in res.get("business_rules", []):
@@ -217,7 +225,10 @@ class ExtractionAgent:
                     norm = normalize(desc)
                     if norm and norm not in seen_br_norms:
                         seen_br_norms.add(norm)
-                        all_br.append({"description": desc})
+                        all_br.append({
+                            "description": desc,
+                            "source_chunk_idx": br.get("source_chunk_idx", idx)
+                        })
 
             # Simple Lists
             all_assumptions.extend([a for a in res.get("assumptions", []) if isinstance(a, str)])

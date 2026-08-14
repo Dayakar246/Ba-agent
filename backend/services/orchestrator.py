@@ -321,11 +321,16 @@ class RequifyOrchestrator:
                 #  Adversarial Review for Functional Spec (Initial)
                 project.update_status("CRITIQUING", "Critic Agent performing adversarial QA on Technical Spec.")
                 db.commit()
-                critic_res = await self.critic_agent.review_artifact("Functional Spec", functional_spec, str(project.extraction))
+                critic_res = await self.critic_agent.review_artifact(
+                    "Functional Spec", 
+                    functional_spec, 
+                    source_brd=raw_text, 
+                    extraction=project.extraction
+                )
                 
                 #  SELF-CORRECTION REFLECTION LOOP
                 iteration = 0
-                max_reflections = 0  # Disabled based on user request to speed up gap analysis
+                max_reflections = 1  # 1-pass reflection loop enabled for self-correction
                 while critic_res.get("status") == "REQUEST_CORRECTION" and critic_res.get("confidence_score", 1.0) < 0.85 and iteration < max_reflections:
                     iteration += 1
                     print(f" [REFLECTION LOOP {iteration}] Critic found issues (Score: {critic_res.get('confidence_score')}). Self-correcting...")
@@ -341,7 +346,12 @@ class RequifyOrchestrator:
                     )
                     
                     # Re-review
-                    critic_res = await self.critic_agent.review_artifact("Functional Spec", functional_spec, str(project.extraction))
+                    critic_res = await self.critic_agent.review_artifact(
+                        "Functional Spec", 
+                        functional_spec, 
+                        source_brd=raw_text, 
+                        extraction=project.extraction
+                    )
                 
                 project.functional_spec = functional_spec
                 current_critic = dict(project.critic_reviews) if project.critic_reviews else {}

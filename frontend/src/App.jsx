@@ -204,11 +204,10 @@ function App() {
       const ingestRes = await fetch(`${API_BASE}/ingest`, { method: 'POST', body: formData });
       const ingestData = await ingestRes.json();
 
-      if (!ingestData.extraction) {
-        throw new Error(ingestData.detail || "Ingestion failed to extract content.");
+      setWorkflowData(prev => ({ ...prev, extraction: ingestData.extraction, docId: ingestData.document_id }));
+      if (ingestData.document_id) {
+        try { localStorage.setItem('active_doc_id', ingestData.document_id); } catch(e) {}
       }
-
-      setWorkflowData(prev => ({ ...prev, extraction: ingestData.extraction }));
       setCompletedSteps(prev => [...prev, 1]);
 
       // 2. GAP ANALYSIS (Modular)
@@ -433,8 +432,12 @@ function App() {
         test_cases: currentTestCases,
         reviews: currentReviews,
         diagram: data.diagram || resData.diagram || null,
-        docId: data.document_id
+        docId: data.document_id || data.id
       }));
+
+      if (data.document_id || data.id) {
+        try { localStorage.setItem('active_doc_id', data.document_id || data.id); } catch(e) {}
+      }
 
       const completed = [];
       if (data.extraction || resData.extraction) completed.push(1);
@@ -512,6 +515,13 @@ function App() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleCloseSession = () => {
+    setWorkflowData({ extraction: null, gaps: null, functional_spec: null, backlog: null, reviews: null, test_cases: null });
+    setCompletedSteps([]);
+    try { localStorage.removeItem('active_doc_id'); } catch(e) {}
+    setCurrentView('new_analysis');
   };
 
   const toggleSelection = (level, indices) => {
@@ -648,9 +658,17 @@ function App() {
 
           <div className="nav-group">
             <div className="nav-label">Delivery OS</div>
-            <div className={`nav-item ${currentView === 'new_analysis' ? 'active' : ''}`} onClick={() => {
-              setCurrentView('new_analysis');
-              setSelectedModules(['gaps', 'functional_spec', 'test_cases', 'backlog']);
+            <div className={`nav-item ${currentView === 'new_analysis' || currentView === 'workflow' || currentView === 'clarification' ? 'active' : ''}`} onClick={() => {
+              if (workflowData && (workflowData.docId || workflowData.extraction || workflowData.analysisId)) {
+                if (workflowData.clarifications && workflowData.clarifications.length > 0 && completedSteps.length < 3) {
+                  setCurrentView('clarification');
+                } else {
+                  setCurrentView('workflow');
+                }
+              } else {
+                setCurrentView('new_analysis');
+                setSelectedModules(['gaps', 'functional_spec', 'test_cases', 'backlog']);
+              }
             }}>
               <span className="nav-icon"><img src="/assets/icons/professional-services.png" width="18" height="18" alt="Discovery" style={{ verticalAlign: 'middle' }} /></span> {!isSidebarCollapsed && "Discovery Swarm"}
             </div>
@@ -799,7 +817,7 @@ function App() {
             onFinish={handleApproveAndSync}
             onUpdateArtifact={handleUpdateArtifact}
             onRegenerateArtifact={handleRegenerateArtifact}
-            onClose={() => setCurrentView('dashboard')}
+            onClose={handleCloseSession}
             isSyncing={isSyncing}
             onToggle={toggleSelection}
           />

@@ -855,7 +855,8 @@ async def generate_functional_spec(payload: dict, db: Session = Depends(get_db))
             state_result = await swarm_graph.ainvoke(None, config=config)
             spec_data = {
                 "functional_spec": state_result.get("functional_spec"),
-                "reviews": state_result.get("reviews")
+                "reviews": state_result.get("reviews"),
+                "critic_review": state_result.get("critic_review")
             }
         except Exception as e:
             print(f" LangGraph state lost. Falling back to direct node invocation. ({str(e)})")
@@ -870,7 +871,8 @@ async def generate_functional_spec(payload: dict, db: Session = Depends(get_db))
             
             spec_data = {
                 "functional_spec": spec_res.get("functional_spec"),
-                "reviews": reviews_res.get("reviews")
+                "reviews": reviews_res.get("reviews"),
+                "critic_review": spec_res.get("critic_review")
             }
     
     # Update analysis with Functional Spec content
@@ -879,10 +881,12 @@ async def generate_functional_spec(payload: dict, db: Session = Depends(get_db))
             results_copy = dict(analysis.results)
             results_copy["functional_spec"] = spec_data.get("functional_spec")
             results_copy["reviews"] = spec_data.get("reviews")
+            results_copy["critic_review"] = spec_data.get("critic_review")
             analysis.results = results_copy
             
         analysis.functional_spec = spec_data.get("functional_spec")
         analysis.reviews = spec_data.get("reviews")
+        analysis.critic_review = spec_data.get("critic_review")
         db.commit()
     
     print(f" [API: /generate-functional-spec] COMPLETED Successfully!")
@@ -1698,10 +1702,10 @@ async def download_functional_spec(doc_id: str, include_nfr = True, db: Session 
         def get_story_req_num(story):
             if not isinstance(story, dict): return 999
             req_id = story.get("requirement_id") or story.get("title") or ""
-            match = re.search(r"REQ-(\d+)", str(req_id), re.I) or re.search(r"FR-(\d+)", str(req_id), re.I) or re.search(r"\d+", str(req_id))
-            if match:
+            nums = re.findall(r"(?:REQ|FR)-(\d+)", str(req_id), re.I) or re.findall(r"\d+", str(req_id))
+            if nums:
                 try:
-                    return int(match.group(1)) if match.lastindex and match.lastindex >= 1 else int(match.group(0))
+                    return min([int(n) for n in nums])
                 except Exception:
                     return 999
             return 999
@@ -1720,6 +1724,16 @@ async def download_functional_spec(doc_id: str, include_nfr = True, db: Session 
             for story in stories_sorted:
                 story_raw_title = story.get('title', 'Untitled Story')
                 story_clean_title = story_raw_title.replace("User Story:", "").strip()
+
+                # Re-order requirement tags inside title bracket numerically (e.g. [REQ-012, REQ-005] -> [REQ-005, REQ-012])
+                bracket_match = re.search(r"^\[(.*?)\]", story_clean_title)
+                if bracket_match:
+                    found_nums = re.findall(r"(?:REQ|FR)-(\d+)", bracket_match.group(1), re.I)
+                    if found_nums:
+                        sorted_nums = sorted(list(set([int(n) for n in found_nums])))
+                        sorted_tags = ", ".join([f"REQ-{str(n).zfill(3)}" for n in sorted_nums])
+                        story_clean_title = re.sub(r"^\[.*?\]", f"[{sorted_tags}]", story_clean_title)
+
                 story_desc = story.get('description', '')
                 moscow = story.get('moscow', 'Must Have')
                 ac_list = story.get('acceptance_criteria', [])
