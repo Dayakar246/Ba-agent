@@ -2442,6 +2442,386 @@ async def qa_sync_endpoint(req: QASyncRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/qa/generate-from-brd")
+async def qa_generate_from_brd(file: UploadFile = File(...)):
+    """
+    Generates QA test cases directly from an uploaded BRD file (PDF, DOCX, TXT)
+    using Approach 3: Auto-Backlog Pipeline (BRD -> BacklogGenAgent -> TestCaseAgent).
+    """
+    import fitz
+    import uuid
+    doc_id = str(uuid.uuid4())
+    temp_path = f"temp_qa_brd_{doc_id}_{file.filename}"
+    
+    with open(temp_path, "wb") as buffer:
+        buffer.write(await file.read())
+        
+    try:
+        # 1. Extract raw text
+        text_content = ""
+        is_pdf = file.content_type == "application/pdf" or file.filename.lower().endswith(".pdf")
+        is_docx = file.filename.lower().endswith(".docx") or file.filename.lower().endswith(".doc")
+        
+        if is_pdf:
+            try:
+                from services.adi_service import AzureDocIntelService
+                adi = AzureDocIntelService()
+                text_content = adi.extract_text(temp_path)
+            except Exception:
+                doc = fitz.open(temp_path)
+                for page in doc:
+                    text_content += page.get_text()
+                doc.close()
+        elif is_docx:
+            try:
+                import docx
+                doc = docx.Document(temp_path)
+                text_content = "\n".join([p.text for p in doc.paragraphs if p.text])
+            except Exception:
+                with open(temp_path, "r", encoding="utf-8", errors="ignore") as f:
+                    text_content = f.read()
+        else:
+            with open(temp_path, "r", encoding="utf-8", errors="ignore") as f:
+                text_content = f.read()
+                
+        if not text_content or not text_content.strip():
+            raise HTTPException(status_code=400, detail="Failed to extract text content from the uploaded BRD document.")
+
+        # 2. Extract Functional Requirements
+        from agents.extraction import ExtractionAgent
+        extractor = ExtractionAgent()
+        print(f" [API: /api/qa/generate-from-brd] Extracting functional requirements for '{file.filename}'...")
+        extraction_res = await extractor.extract_content(text_content, context_type="document")
+        raw_reqs = extraction_res.get("functional_requirements", [])
+
+        # 3. Auto-Backlog Generation (Approach 3)
+        from agents.backlog_gen import BacklogGenAgent
+        backlog_agent = BacklogGenAgent()
+        print(f" [API: /api/qa/generate-from-brd] Generating Auto-Backlog for '{file.filename}'...")
+        backlog_data = await backlog_agent.generate_backlog(trd_content=text_content, raw_requirements=raw_reqs)
+        
+        # 4. Read Existing Repo Specs for Coverage Audit
+        existing_specs = []
+        try:
+            repo_tests_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "playwright_tests")
+            if os.path.exists(repo_tests_dir):
+                for fname in os.listdir(repo_tests_dir):
+                    if fname.endswith(".spec.ts") or fname.endswith(".spec.js"):
+                        fpath = os.path.join(repo_tests_dir, fname)
+                        with open(fpath, "r", encoding="utf-8", errors="ignore") as f:
+                            content = f.read()
+                            test_matches = re.findall(r"test\s*\(\s*['\"]([^'\"]+)['\"]", content)
+                            existing_specs.append({
+                                "filename": fname,
+                                "test_titles": test_matches,
+                                "test_count": len(test_matches)
+                            })
+        except Exception as ex:
+            print(f"WARN: Could not read repo specs: {ex}")
+
+        # 5. QA Test Case Generation
+        from agents.test_case_agent import TestCaseAgent
+        test_agent = TestCaseAgent()
+        backlog_str = json.dumps(backlog_data) if isinstance(backlog_data, (dict, list)) else str(backlog_data)
+        
+        print(f" [API: /api/qa/generate-from-brd] Drafting Test Cases & Playwright Scripts for '{file.filename}'...")
+        test_cases = await test_agent.draft_test_cases(backlog_json=backlog_str, functional_spec=text_content, existing_specs=existing_specs)
+        
+        return {"test_cases": test_cases}
+    except Exception as e:
+        print(f" [API: /api/qa/generate-from-brd] ERROR: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate test cases from BRD: {str(e)}")
+    finally:
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
+
+class QAPdfExportRequest(BaseModel):
+    title: Optional[str] = "QA Test Suite"
+    test_cases: Any
+
+@app.post("/api/qa/export-pdf")
+async def qa_export_pdf(req: QAPdfExportRequest):
+    """
+    Generates a printable, styled HTML document for downloading QA Test Cases & Playwright scripts in PDF format.
+    """
+    from fastapi.responses import HTMLResponse
+    import json
+    import re
+    import base64
+    import os
+
+    title = req.title or "QA Test Suite"
+    raw_data = req.test_cases
+    
+    tc_list = []
+    script_code = ""
+
+    if isinstance(raw_data, str):
+        try:
+            raw_data = json.loads(raw_data)
+        except Exception:
+            pass
+
+    if isinstance(raw_data, dict):
+        tc_list = raw_data.get("test_cases") or raw_data.get("cases") or []
+        script_code = raw_data.get("playwright_script") or raw_data.get("script") or ""
+    elif isinstance(raw_data, list):
+        tc_list = raw_data
+
+    # Encode logo
+    logo_base64 = ""
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        logo_path = os.path.join(base_dir, "..", "frontend", "public", "assets", "Valuemomentum_logo_dark.png")
+        if os.path.exists(logo_path):
+            with open(logo_path, "rb") as img_f:
+                logo_base64 = base64.b64encode(img_f.read()).decode("utf-8")
+    except Exception:
+        pass
+
+    covered_count = sum(1 for tc in tc_list if isinstance(tc, dict) and str(tc.get('coverage_status')).upper() == 'ALREADY_COVERED')
+    total_count = len(tc_list)
+    new_count = total_count - covered_count
+    covered_pct = round((covered_count / total_count * 100)) if total_count > 0 else 0
+    new_pct = 100 - covered_pct if total_count > 0 else 0
+
+    tc_rows = ""
+    for idx, tc in enumerate(tc_list, 1):
+        if not isinstance(tc, dict): continue
+        tc_id = tc.get('test_case_id') or tc.get('id') or f'TC-{str(idx).zfill(3)}'
+        tc_title = tc.get('title') or tc.get('name') or 'Test Scenario'
+        story_name = tc.get('user_story_title') or tc.get('user_story_name') or tc.get('user_story_id') or 'General Story'
+        test_type = tc.get('type') or tc.get('test_type') or 'Functional'
+        priority = tc.get('priority') or 'High'
+        coverage_status = tc.get('coverage_status') or 'NEW_TEST_REQUIRED'
+        
+        coverage_badge = '<span class="badge badge-coverage-new">🆕 New Coverage</span>'
+        if str(coverage_status).upper() == 'ALREADY_COVERED':
+            coverage_badge = '<span class="badge badge-coverage-covered">🟢 Covered in Repo</span>'
+
+        so = tc.get('scenario_outline')
+        gherkin_text = tc.get('gherkin_scenario') or ''
+        if gherkin_text and isinstance(so, dict) and 'headers' in so:
+            for h in so.get('headers', []):
+                gherkin_text = re.sub(r"''|\"\"", f'"<{h}>"', gherkin_text, count=1)
+
+        gherkin_html = ""
+        if gherkin_text:
+            gherkin_html = f"<div style='margin-top:6px; background:#0f172a; color:#38bdf8; padding:8px 10px; border-radius:6px; font-family:Consolas, monospace; font-size:0.78rem; white-space:pre-wrap;'>{gherkin_text}</div>"
+
+        # Scenario Outline Examples Table rendering
+        outline_html = ""
+        if isinstance(so, dict) and 'headers' in so and 'examples' in so:
+            headers_th = "".join([f"<th style='padding:4px 8px; font-size:0.75rem;'>{h}</th>" for h in so.get('headers', [])])
+            rows_tr = "".join([
+                "<tr>" + "".join([f"<td style='padding:4px 8px; font-size:0.75rem;'>{cell}</td>" for cell in row]) + "</tr>"
+                for row in so.get('examples', [])
+            ])
+            outline_html = f"""
+            <div style="margin-top:6px;">
+                <strong style="font-size:0.75rem; color:#475569;">Scenario Outline Examples:</strong>
+                <table style="margin-top:4px; font-size:0.75rem; border:1px solid #cbd5e1;">
+                    <thead><tr style="background:#f1f5f9;">{headers_th}</tr></thead>
+                    <tbody>{rows_tr}</tbody>
+                </table>
+            </div>
+            """
+
+        steps = tc.get('steps') or []
+        if isinstance(steps, list):
+            steps_formatted = "<ol style='margin:0; padding-left:16px; font-size:0.82rem;'>" + "".join([f"<li>{s.get('action') if isinstance(s, dict) else s}</li>" for s in steps]) + "</ol>"
+        else:
+            steps_formatted = str(steps)
+
+        expected = tc.get('expected_result') or 'Expected validation passes'
+
+        tc_rows += f"""
+        <tr style="page-break-inside: avoid;">
+            <td><strong style="color:#0284c7;">{tc_id}</strong><br/>{coverage_badge}</td>
+            <td><strong>{tc_title}</strong><br/><small style="color:#64748b;">🔗 {story_name}</small>{gherkin_html}{outline_html}</td>
+            <td><span class="badge badge-priority">{priority}</span></td>
+            <td><span class="badge badge-type">{test_type}</span></td>
+            <td>{steps_formatted}</td>
+            <td>{expected}</td>
+        </tr>
+        """
+
+    script_html = ""
+    if script_code:
+        script_html = f"""
+        <div style="margin-top: 30px; page-break-before: always;">
+            <h2>🎭 Playwright TypeScript Automation Suite</h2>
+            <pre><code>{script_code}</code></pre>
+        </div>
+        """
+
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8"/>
+    <title>QA Test Cases - {title}</title>
+    <style>
+        @media print {{
+            .no-print {{ display: none !important; }}
+            body {{ padding: 0 !important; background: #fff !important; }}
+            .page-break {{ page-break-before: always; }}
+            tr {{ page-break-inside: avoid !important; break-inside: avoid !important; }}
+        }}
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            padding: 40px 60px;
+            line-height: 1.6;
+            color: #1e293b;
+            max-width: 1100px;
+            margin: 0 auto;
+            background: #f8fafc;
+        }}
+        .header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 16px;
+        }}
+        .title-banner {{
+            background: linear-gradient(135deg, #0f172a 0%, #0284c7 100%);
+            color: white;
+            padding: 24px 32px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }}
+        .title-banner h1 {{ margin: 0; font-size: 1.6rem; font-weight: 700; }}
+        .title-banner p {{ margin: 4px 0 0 0; opacity: 0.9; font-size: 0.9rem; }}
+        .coverage-summary-bar {{
+            background: #f1f5f9;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            padding: 12px 20px;
+            margin-bottom: 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.9rem;
+            color: #0f172a;
+        }}
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            font-size: 0.88rem;
+        }}
+        th, td {{
+            border: 1px solid #cbd5e1;
+            padding: 10px 12px;
+            text-align: left;
+            vertical-align: top;
+        }}
+        th {{
+            background-color: #f1f5f9;
+            color: #0f172a;
+            font-weight: 600;
+        }}
+        .badge {{
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }}
+        .badge-priority {{ background: #fef3c7; color: #92400e; }}
+        .badge-type {{ background: #e0f2fe; color: #0369a1; }}
+        .badge-coverage-covered {{ background: #dcfce7; color: #15803d; border: 1px solid #86efac; }}
+        .badge-coverage-new {{ background: #e0f2fe; color: #0369a1; border: 1px solid #7dd3fc; }}
+        pre {{
+            background: #0f172a;
+            color: #38bdf8;
+            padding: 16px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-family: Consolas, Monaco, monospace;
+            font-size: 0.85rem;
+            white-space: pre-wrap;
+        }}
+        .btn-print {{
+            background: #0284c7;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(2, 132, 199, 0.3);
+            font-size: 0.9rem;
+        }}
+        .no-print-bar {{
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+        }}
+    </style>
+</head>
+<body>
+    <div class="no-print-bar no-print">
+        <button onclick="window.print()" class="btn-print">🖨️ Save as PDF / Print</button>
+    </div>
+
+    <div class="header">
+        <div class="logo">
+            {f'<img src="data:image/png;base64,{logo_base64}" style="height: 44px;" />' if logo_base64 else '<strong style="font-size:1.2rem; color:#0284c7;">ValueMomentum</strong>'}
+        </div>
+        <div style="text-align: right; font-size: 0.8rem; color: #64748b;">
+            <strong>QUALITY ASSURANCE SPECIFICATION</strong><br/>
+            Generated by BA Agent QA Architect
+        </div>
+    </div>
+
+    <div class="title-banner">
+        <h1>QA Test Suite & Automation Specification</h1>
+        <p>Target: {title} | Total Test Cases: {total_count}</p>
+    </div>
+
+    <div class="coverage-summary-bar">
+        <span><strong>📊 Existing Test Coverage Audit:</strong> <span style="color:#15803d; font-weight:700;">{covered_count} Covered in Repo ({covered_pct}%)</span> &nbsp;|&nbsp; <span style="color:#0369a1; font-weight:700;">{new_count} New Coverage Required ({new_pct}%)</span></span>
+        <span>Total Scenarios: {total_count}</span>
+    </div>
+
+    <h2>1. Manual BDD Test Cases</h2>
+    <table>
+        <thead>
+            <tr>
+                <th style="width: 10%;">TC ID</th>
+                <th style="width: 25%;">Test Title & Story</th>
+                <th style="width: 10%;">Priority</th>
+                <th style="width: 12%;">Type</th>
+                <th style="width: 23%;">Execution Steps</th>
+                <th style="width: 20%;">Expected Result</th>
+            </tr>
+        </thead>
+        <tbody>
+            {tc_rows if tc_rows else '<tr><td colspan="6">No test cases generated.</td></tr>'}
+        </tbody>
+    </table>
+
+    {script_html}
+
+    <script>
+        window.onload = function() {{
+            setTimeout(function() {{
+                window.print();
+            }}, 500);
+        }};
+    </script>
+</body>
+</html>"""
+    return HTMLResponse(content=html)
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+

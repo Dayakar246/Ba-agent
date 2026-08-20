@@ -218,10 +218,50 @@ const TestCasesViewer = ({ rawData, storyTitle, docId }) => {
     );
   }
 
+  const API_BASE = import.meta.env.VITE_API_BASE_URL || (
+    window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+      ? 'http://127.0.0.1:8000'
+      : 'https://ba-agent-aqd8c3d8dtdrbcat.centralus-01.azurewebsites.net'
+  );
+
+  const handleDownloadPdf = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/qa/export-pdf`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: storyTitle || 'QA Test Suite',
+          test_cases: rawData
+        })
+      });
+      if (res.ok) {
+        const htmlContent = await res.text();
+        const printWindow = window.open('', '_blank');
+        if (printWindow) {
+          printWindow.document.write(htmlContent);
+          printWindow.document.close();
+        } else {
+          alert("Please allow popups for this site to view and save the PDF.");
+        }
+      } else {
+        alert("Failed to generate PDF document.");
+      }
+    } catch (e) {
+      alert("Error exporting PDF: " + e.message);
+    }
+  };
+
   return (
     <div className="test-cases-viewer">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <button 
+            className="btn-primary mini"
+            onClick={handleDownloadPdf}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 14px', fontSize: '0.85rem', background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)' }}
+          >
+            📄 Download PDF Spec
+          </button>
           <button 
             className="btn-secondary mini" 
             onClick={handlePullPlaywright}
@@ -269,14 +309,62 @@ const TestCasesViewer = ({ rawData, storyTitle, docId }) => {
 
       {viewMode === 'manual' ? (
         <div className="manual-cases-list" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {(() => {
+            const totalCount = parsedData.test_cases.length;
+            const coveredCount = parsedData.test_cases.filter(tc => tc.coverage_status === 'ALREADY_COVERED').length;
+            const newCount = totalCount - coveredCount;
+            const coveredPct = totalCount > 0 ? Math.round((coveredCount / totalCount) * 100) : 0;
+            const newPct = totalCount > 0 ? 100 - coveredPct : 0;
+
+            return (
+              <div style={{
+                background: 'rgba(0, 242, 255, 0.05)',
+                border: '1px solid rgba(0, 242, 255, 0.2)',
+                borderRadius: '8px',
+                padding: '12px 16px',
+                display: 'flex',
+                justify: 'space-between',
+                alignItems: 'center',
+                fontSize: '0.85rem',
+                color: 'var(--text-main)',
+                marginBottom: '4px'
+              }}>
+                <div>
+                  <strong>📊 Existing Test Coverage Audit:</strong>{' '}
+                  <span style={{ color: '#4ade80', fontWeight: '600' }}>{coveredCount} Covered in Repo ({coveredPct}%)</span>{' '}
+                  <span style={{ color: '#aaa' }}>|</span>{' '}
+                  <span style={{ color: '#00f2ff', fontWeight: '600' }}>{newCount} New Coverage Required ({newPct}%)</span>
+                </div>
+                <span style={{ color: '#aaa' }}>Total Scenarios: {totalCount}</span>
+              </div>
+            );
+          })()}
+
           {parsedData.test_cases.map((tc, idx) => {
             const displayStoryName = tc.user_story_title || tc.user_story_name || storyTitle || tc.user_story_id || tc.requirement_id || null;
+            
+            // Format Gherkin placeholders if quotes are empty
+            let gherkinText = tc.gherkin_scenario || '';
+            if (gherkinText && tc.scenario_outline && Array.isArray(tc.scenario_outline.headers)) {
+              tc.scenario_outline.headers.forEach(h => {
+                gherkinText = gherkinText.replace(/''|""/, `"<${h}>"`);
+              });
+            }
+
             return (
               <div key={idx} className="glass-card" style={{ padding: '20px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
                   <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', margin: '0 0 8px 0' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', margin: '0 0 8px 0', flexWrap: 'wrap' }}>
                       <h4 style={{ margin: 0, color: 'var(--accent-primary)', fontSize: '1.1rem' }}>{tc.test_case_id}</h4>
+                      <span style={{ 
+                        padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: '600',
+                        background: tc.coverage_status === 'ALREADY_COVERED' ? 'rgba(34, 197, 94, 0.15)' : 'rgba(0, 242, 255, 0.15)',
+                        color: tc.coverage_status === 'ALREADY_COVERED' ? '#4ade80' : '#00f2ff',
+                        border: `1px solid ${tc.coverage_status === 'ALREADY_COVERED' ? 'rgba(34, 197, 94, 0.4)' : 'rgba(0, 242, 255, 0.4)'}`
+                      }}>
+                        {tc.coverage_status === 'ALREADY_COVERED' ? '🟢 Covered in Repo' : '🆕 New Coverage Required'}
+                      </span>
                       {displayStoryName && (
                         <span style={{ 
                           background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', 
@@ -294,15 +382,56 @@ const TestCasesViewer = ({ rawData, storyTitle, docId }) => {
                       </ReactMarkdown>
                     ) : renderReactChild(tc.description)}
                   </div>
+
+                  {/* Gherkin Scenario Syntax Block */}
+                  {gherkinText && (
+                    <div style={{ margin: '10px 0', background: 'rgba(15, 23, 42, 0.9)', border: '1px solid rgba(56, 189, 248, 0.2)', borderRadius: '8px', padding: '12px' }}>
+                      <span style={{ fontSize: '0.75rem', fontWeight: '600', color: '#38bdf8', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: '6px' }}>
+                        🥒 Gherkin BDD Scenario
+                      </span>
+                      <pre style={{ margin: 0, color: '#e2e8f0', fontFamily: 'Consolas, monospace', fontSize: '0.85rem', whiteSpace: 'pre-wrap', lineHeight: '1.4' }}>
+                        {gherkinText}
+                      </pre>
+                    </div>
+                  )}
+
+                  {/* Scenario Outline Examples Table */}
+                  {tc.scenario_outline && tc.scenario_outline.headers && tc.scenario_outline.examples && (
+                    <div style={{ margin: '10px 0', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--glass-border)', borderRadius: '8px', padding: '12px' }}>
+                      <span style={{ fontSize: '0.75rem', fontWeight: '600', color: 'var(--accent-primary)', textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>
+                        📊 Scenario Outline Examples Table
+                      </span>
+                      <div style={{ overflowX: 'auto' }}>
+                        <table style={{ width: '100%', fontSize: '0.8rem', borderCollapse: 'collapse' }}>
+                          <thead>
+                            <tr style={{ background: 'rgba(255,255,255,0.05)' }}>
+                              {tc.scenario_outline.headers.map((h, hIdx) => (
+                                <th key={hIdx} style={{ padding: '6px 10px', textAlign: 'left', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {tc.scenario_outline.examples.map((row, rIdx) => (
+                              <tr key={rIdx} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                                {row.map((cell, cIdx) => (
+                                  <td key={cIdx} style={{ padding: '6px 10px', color: '#ccc' }}>{renderReactChild(cell)}</td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <span style={{ 
                   padding: '4px 8px', borderRadius: '4px', fontSize: '0.8rem', fontWeight: '600',
-                  background: (tc.test_type || '').toLowerCase().includes('positive') ? 'rgba(25,128,56,0.1)' : 
-                              (tc.test_type || '').toLowerCase().includes('negative') ? 'rgba(218,30,40,0.1)' : 'rgba(241,194,27,0.1)',
-                  color: (tc.test_type || '').toLowerCase().includes('positive') ? 'var(--success)' : 
-                         (tc.test_type || '').toLowerCase().includes('negative') ? 'var(--error)' : 'var(--warning)'
+                  background: (tc.test_type || tc.type || '').toLowerCase().includes('positive') ? 'rgba(25,128,56,0.1)' : 
+                              (tc.test_type || tc.type || '').toLowerCase().includes('negative') ? 'rgba(218,30,40,0.1)' : 'rgba(241,194,27,0.1)',
+                  color: (tc.test_type || tc.type || '').toLowerCase().includes('positive') ? 'var(--success)' : 
+                         (tc.test_type || tc.type || '').toLowerCase().includes('negative') ? 'var(--error)' : 'var(--warning)'
                 }}>
-                  {renderReactChild(tc.test_type || 'Functional')}
+                  {renderReactChild(tc.test_type || tc.type || 'Functional')}
                 </span>
               </div>
               

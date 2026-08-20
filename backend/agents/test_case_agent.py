@@ -19,10 +19,11 @@ class TestCaseAgent:
         self.llm = LLMService()
         self.ado_service = AzureDevOpsService()
 
-    async def draft_test_cases(self, backlog_json: str, functional_spec: str = "") -> str:
+    async def draft_test_cases(self, backlog_json: str, functional_spec: str = "", existing_specs: list = None) -> str:
         """
-        Drafts exhaustive, production-ready QA test cases by analyzing BOTH the Functional Specification (TRD)
-        and the Backlog User Stories with Acceptance Criteria.
+        Drafts exhaustive, production-ready QA test cases by analyzing Functional Specifications,
+        Backlog User Stories, and existing test coverage. Generates Gherkin scenarios, Scenario Outlines,
+        data-driven variations, coverage validation, and parameterized Playwright TypeScript code.
         """
         from services.template_service import TemplateService
         ts = TemplateService()
@@ -35,21 +36,28 @@ class TestCaseAgent:
         spec_section = f"\n\n--- FUNCTIONAL SPECIFICATION (TRD) ---\n{compressed_spec}" if compressed_spec else ""
         backlog_section = f"\n\n--- ENGINEERING BACKLOG (USER STORIES & ACCEPTANCE CRITERIA) ---\n{compact_backlog}" if compact_backlog else ""
         
+        existing_specs_str = ""
+        if existing_specs and isinstance(existing_specs, list) and len(existing_specs) > 0:
+            existing_specs_str = "\n\n--- EXISTING REPOSITORY TEST COVERAGE ---\n" + "\n".join([f"- {s}" if isinstance(s, str) else f"- {s.get('filename')}: {s.get('test_count', 0)} tests" for s in existing_specs])
+
         context_prompt = f"""
 {skill_prompt}
 
-CRITICAL INSTRUCTION: Analyze the provided Functional Specification (TRD) and Engineering Backlog below.
-Generate an EXHAUSTIVE, COMPREHENSIVE QA Test Suite (at least 15 to 35 test cases) covering EVERY Epic, Feature, and User Story.
+CRITICAL INSTRUCTION: Analyze the provided Functional Specification (TRD), Engineering Backlog, and Existing Repository Test Coverage below.
+Generate an EXHAUSTIVE QA Test Suite (15 to 35 test cases) adhering strictly to Requirement #1 Test Case Design:
 
-For every User Story and Functional Requirement, generate:
-1. Positive Happy Path Test Cases
-2. Negative / Validation Error Test Cases
-3. Edge Case / Boundary Value Test Cases
-4. Integration & Security / Authorization Test Cases
-5. Production-Ready Playwright TypeScript (.spec.ts) automation code!
+MANDATORY GENERATION REQUIREMENTS:
+1. **Gherkin Scenarios**: Every test case MUST include a formal `gherkin_scenario` in standard syntax (`Given ... When ... Then ...`).
+2. **Scenario Outlines**: For boundary tests or multi-format validations, set `is_scenario_outline: true` and populate `scenario_outline` with `headers` and `examples` 2D array.
+3. **CRITICAL GHERKIN PLACEHOLDER RULE**: For Scenario Outlines (`is_scenario_outline: true`), ALWAYS format parameters in `gherkin_scenario` using explicit angle-bracket placeholders `<header_name>` matching `scenario_outline.headers` (e.g. `When user enters DOB "<dob_input>"` or `When they upload file "<fileName>"`). NEVER leave empty quotes `''`.
+4. **Negative & Edge Cases**: Include dedicated Negative validation cases and Edge/Boundary cases.
+5. **Data Driven Variations**: Populate `data_driven_matrix` with input/output test data parameter sets.
+6. **Existing Test Coverage Audit**: Compare each scenario against Existing Repository Test Coverage. Set `coverage_status` to `"ALREADY_COVERED"` if existing test specs cover it, otherwise set to `"NEW_TEST_REQUIRED"`.
+7. **Data-Driven Playwright Code**: `playwright_script` MUST be production-ready TypeScript using parameterized data loops (`for (const data of dataset) {{ test(...) }}`) for scenario outlines.
 
 {spec_section}
 {backlog_section}
+{existing_specs_str}
 
 Output MUST strictly follow the JSON schema:
 {{
@@ -58,15 +66,30 @@ Output MUST strictly follow the JSON schema:
       "test_case_id": "TC-001",
       "title": "Clear descriptive title",
       "user_story_id": "US-001",
-      "type": "Functional/Security/Negative",
+      "user_story_title": "Story Title",
+      "type": "Functional/Security/Negative/Boundary",
       "priority": "High/Medium/Low",
       "preconditions": "Preconditions required",
+      "gherkin_scenario": "Scenario: Happy Path Intake\\n  Given the user is on /claims/new\\n  When the user submits valid details\\n  Then the claim is persisted in ISO-8601 format",
+      "is_scenario_outline": true,
+      "scenario_outline": {{
+        "headers": ["dob_input", "expected_iso"],
+        "examples": [
+          ["1985-02-14", "1985-02-14"],
+          ["02/14/1985", "1985-02-14"]
+        ]
+      }},
+      "data_driven_matrix": [
+        {{"dob": "1985-02-14", "result": "Valid ISO"}},
+        {{"dob": "02/14/1985", "result": "Normalized"}}
+      ],
+      "coverage_status": "NEW_TEST_REQUIRED",
       "steps": ["Step 1", "Step 2"],
       "expected_result": "Expected outcome",
       "automation_status": "Automated"
     }}
   ],
-  "playwright_script": "// Complete Playwright TypeScript Test Script..."
+  "playwright_script": "// Complete Data-Driven Playwright TypeScript Test Suite..."
 }}
 """
         from utils.json_extractor import extract_json_from_llm_response

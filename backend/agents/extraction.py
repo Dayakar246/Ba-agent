@@ -146,15 +146,33 @@ class ExtractionAgent:
         {chunk_text}
         """
 
+        print(f" [ExtractionAgent] Processing Chunk {chunk_idx + 1}/{total_chunks} ({len(chunk_text)} chars)...")
         response = await self.llm.call(prompt, provider="azure")
         res = extract_json_from_llm_response(response)
         
         if isinstance(res, dict) and "error" in res:
-            print(f"WARN: Chunk {chunk_idx + 1} parse failed. Retrying with temperature=0.0...")
+            raw_snippet = str(response)[:300].replace('\n', ' ')
+            print(f"⚠️ [ExtractionAgent WARN] Chunk {chunk_idx + 1}/{total_chunks} parse failed.")
+            print(f"   Reason      : {res.get('error')}")
+            print(f"   Raw Snippet : \"{raw_snippet}\"")
+            print(f"   Action      : Retrying with temperature=0.0...")
             fallback_resp = await self.llm.call(prompt, provider="azure", temperature=0.0)
             res = extract_json_from_llm_response(fallback_resp)
+            if isinstance(res, dict) and "error" in res:
+                fb_snippet = str(fallback_resp)[:300].replace('\n', ' ')
+                print(f"❌ [ExtractionAgent ERROR] Chunk {chunk_idx + 1}/{total_chunks} retry with temperature=0.0 ALSO failed.")
+                print(f"   Retry Reason : {res.get('error')}")
+                print(f"   Retry Snippet: \"{fb_snippet}\"")
+            else:
+                print(f"✅ [ExtractionAgent SUCCESS] Chunk {chunk_idx + 1}/{total_chunks} parse succeeded on temperature=0.0 retry!")
 
-        return res if isinstance(res, dict) and "error" not in res else self._empty_extraction_response(f"Failed to parse chunk {chunk_idx+1}")
+        if isinstance(res, dict) and "error" not in res:
+            fr_count = len(res.get("functional_requirements", []))
+            print(f"✅ [ExtractionAgent] Chunk {chunk_idx + 1}/{total_chunks} extracted {fr_count} functional requirements.")
+            return res
+        else:
+            print(f"❌ [ExtractionAgent ERROR] Returning empty extraction fallback for Chunk {chunk_idx + 1}/{total_chunks}.")
+            return self._empty_extraction_response(f"Failed to parse chunk {chunk_idx+1}")
 
     def _reduce_chunk_results(self, chunk_results: List[Dict[str, Any]]) -> Dict[str, Any]:
         """

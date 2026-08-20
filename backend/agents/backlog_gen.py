@@ -206,9 +206,20 @@ Return valid JSON:
             return sanitized
 
         max_retries = 2
+        fallback_prompt = f"""
+{skill_prompt}
+
+ACT AS AN ENTERPRISE AGILE SOLUTION ARCHITECT.
+Analyze the following document / requirements content and generate a complete Agile Engineering Backlog (Epics, Features, User Stories with Acceptance Criteria, and Tasks).
+
+DOCUMENT CONTENT:
+{compressed_trd}
+
+Output MUST strictly adhere to standard JSON schema containing 'epics' or 'features'.
+"""
         for attempt in range(max_retries):
             print(f" [BacklogArchitect] Structuring backlog from TRD ({len(trd_content)} chars)... (Attempt {attempt+1}/{max_retries})")
-            response = await self.llm.call(prompt, provider="azure", agent_name="BacklogArchitect")
+            response = await self.llm.call(fallback_prompt, provider="azure", agent_name="BacklogArchitect")
             print(f" [BacklogArchitect] LLM response received. Attempting JSON parse...")
 
             from utils.json_extractor import extract_json_from_llm_response

@@ -142,6 +142,9 @@ def extract_json_from_llm_response(res_text: Any):
         if fallback_res.get("test_cases") and len(fallback_res["test_cases"]) > 0:
             return fallback_res
 
+    snippet = clean[:250].replace('\n', ' ')
+    print(f"⚠️ [JSONExtractor ERROR] Failed to parse JSON from LLM response.")
+    print(f"   Raw Response Snippet (first 250 chars): \"{snippet}\"")
     return {"error": "Failed to parse extracted JSON due to formatting or truncation", "raw": clean}
 
 def _fallback_extract_test_cases(text: str) -> dict:

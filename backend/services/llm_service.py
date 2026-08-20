@@ -258,21 +258,28 @@ class LLMService:
         if not messages:
             messages = [{"role": "user", "content": prompt}]
             
-        kwargs = {
-            "model": self.azure_deployment,
-            "messages": messages,
-            "max_tokens": 16384,
-            "temperature": temperature if temperature is not None else 0.0,
-            "seed": 42
-        }
+        def _get_model_kwargs(dep_name: str, temp_val: float):
+            dep_lower = (dep_name or "").lower()
+            is_nextgen = any(k in dep_lower for k in ["gpt-5", "o1", "o3"])
+            kw = {
+                "model": dep_name,
+                "messages": messages,
+            }
+            if is_nextgen:
+                kw["max_completion_tokens"] = 16384
+            else:
+                kw["max_tokens"] = 16384
+                kw["temperature"] = temp_val if temp_val is not None else 0.0
+                kw["seed"] = 42
+            if response_format:
+                kw["response_format"] = response_format
+            if tools:
+                kw["tools"] = tools
+                kw["tool_choice"] = tool_choice
+                kw["parallel_tool_calls"] = False
+            return kw
 
-        if response_format:
-            kwargs["response_format"] = response_format
-        
-        if tools:
-            kwargs["tools"] = tools
-            kwargs["tool_choice"] = tool_choice
-            kwargs["parallel_tool_calls"] = False
+        kwargs = _get_model_kwargs(self.azure_deployment, temperature)
             
         try:
             completion = await self.azure_client.chat.completions.create(**kwargs)
@@ -292,11 +299,48 @@ class LLMService:
                 
             return message.content
         except Exception as e:
-            if self.azure_deployment_2 and self.azure_deployment_2 != self.azure_deployment:
-                # print(f" [LLMService] Primary Azure deployment '{self.azure_deployment}' failed ({e}). Retrying with secondary deployment AZURE_OPENAI_DEPLOYMENT_2 ('{self.azure_deployment_2}')...")
+            err_str = str(e).lower()
+            if "max_tokens" in err_str or "unsupported_parameter" in err_str:
+                print(f"🔄 [LLMService] Adjusting parameters for '{self.azure_deployment}' (switching to max_completion_tokens)...")
+                retry_kw = dict(kwargs)
+                if "max_tokens" in retry_kw:
+                    val = retry_kw.pop("max_tokens")
+                    retry_kw["max_completion_tokens"] = val
+                retry_kw.pop("temperature", None)
+                retry_kw.pop("seed", None)
                 try:
-                    kwargs["model"] = self.azure_deployment_2
-                    completion = await self.azure_client.chat.completions.create(**kwargs)
+                    completion = await self.azure_client.chat.completions.create(**retry_kw)
+                    latency = (time.time() - start_time) * 1000
+                    message = completion.choices[0].message
+                    usage = completion.usage
+                    TelemetryService.log_call(
+                        agent_name=agent_name, provider="azure", model_name=self.azure_deployment,
+                        latency_ms=latency, prompt_tokens=usage.prompt_tokens if usage else 0,
+                        completion_tokens=usage.completion_tokens if usage else 0, success=True
+                    )
+                    if message.tool_calls:
+                        return message
+                    return message.content
+                except Exception as e_retry:
+                    e = e_retry
+
+            print(f"❌ [LLMService ERROR] Primary Azure deployment '{self.azure_deployment}' failed: {e}")
+            if self.azure_deployment_2 and self.azure_deployment_2 != self.azure_deployment:
+                print(f"🔄 [LLMService] Retrying with secondary deployment '{self.azure_deployment_2}'...")
+                try:
+                    sec_kwargs = _get_model_kwargs(self.azure_deployment_2, temperature)
+                    try:
+                        completion = await self.azure_client.chat.completions.create(**sec_kwargs)
+                    except Exception as e_sec_param:
+                        if "max_tokens" in str(e_sec_param).lower() or "unsupported_parameter" in str(e_sec_param).lower():
+                            sec_kwargs.pop("max_tokens", None)
+                            sec_kwargs["max_completion_tokens"] = 16384
+                            sec_kwargs.pop("temperature", None)
+                            sec_kwargs.pop("seed", None)
+                            completion = await self.azure_client.chat.completions.create(**sec_kwargs)
+                        else:
+                            raise e_sec_param
+
                     latency = (time.time() - start_time) * 1000
                     message = completion.choices[0].message
                     usage = completion.usage
@@ -309,7 +353,7 @@ class LLMService:
                         return message
                     return message.content
                 except Exception as e2:
-                    # print(f"DEBUG: Secondary Azure Deployment ERROR: {str(e2)}")
+                    print(f"❌ [LLMService ERROR] Secondary Azure Deployment ALSO failed: {e2}")
                     e = e2
 
             latency = (time.time() - start_time) * 1000
@@ -317,7 +361,6 @@ class LLMService:
                 agent_name=agent_name, provider="azure", model_name=self.azure_deployment,
                 latency_ms=latency, success=False, error_message=str(e)
             )
-            # print(f"DEBUG: Azure API ERROR: {str(e)}")
             return f"Azure Error: {str(e)}"
 
     async def generate_with_kimi(self, prompt: str, agent_name: str = "unknown", tools: list = None, tool_choice: str = "auto", messages: list = None):
@@ -522,23 +565,25 @@ class LLMService:
             return s.startswith("Azure Error") or s.startswith("Groq Error") or s.startswith("NVIDIA Error") or s.startswith("Vision Error") or s.startswith("Kimi Error") or s.startswith("Azure Fallback Error") or s.startswith("Error:")
 
         if is_error(result):
-            # print(f" [LLMService] Primary provider ({provider}) failed! Attempting fallback chain...")
+            print(f"⚠️ [LLMService WARN] Primary provider '{provider}' failed with: {result}")
+            print(f"🔄 [LLMService] Initiating provider fallback chain...")
             fallbacks = ["azure", "groq", "azure_fallback", "nvidia"]
             if provider in fallbacks: fallbacks.remove(provider)
             for fb in fallbacks:
-                # print(f" [LLMService] Attempting fallback to provider: '{fb}'...")
+                print(f"   ► Attempting fallback provider: '{fb}'...")
                 try:
                     if fb == "groq": result = await self.generate_with_groq(prompt, agent_name, tools, tool_choice, messages)
                     elif fb == "nvidia": result = await self.generate_with_nvidia(prompt, agent_name, tools, tool_choice, messages)
                     elif fb == "azure": result = await self.generate_with_azure(prompt, agent_name, tools, tool_choice, messages)
                     elif fb == "azure_fallback": result = await self.generate_with_azure_fallback(prompt, agent_name, tools, tool_choice, messages)
                 except Exception as fb_err:
-                    # print(f" [LLMService] Fallback provider '{fb}' crashed: {fb_err}")
+                    print(f"❌ [LLMService ERROR] Fallback provider '{fb}' crashed: {fb_err}")
                     continue
                 
                 # If tool call object is returned from fallback, return it
                 if not isinstance(result, str):
                     return result
                 if not is_error(result):
+                    print(f"✅ [LLMService SUCCESS] Fallback provider '{fb}' succeeded!")
                     break
         return result
