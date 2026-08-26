@@ -1,0 +1,61 @@
+trigger:
+  - main
+  - develop
+
+pr:
+  - main
+  - develop
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  buildConfiguration: 'Release'
+
+steps:
+- task: UseDotNet@2
+  displayName: 'Use .NET 8 SDK'
+  inputs:
+    packageType: 'sdk'
+    version: '8.0.x'
+
+- task: DotNetCoreCLI@2
+  displayName: 'Restore NuGet Packages'
+  inputs:
+    command: 'restore'
+    projects: 'PlaywrightAutomation/PlaywrightAutomation.sln'
+
+- task: DotNetCoreCLI@2
+  displayName: 'Build Solution'
+  inputs:
+    command: 'build'
+    projects: 'PlaywrightAutomation/PlaywrightAutomation.sln'
+    arguments: '--configuration $(buildConfiguration) --no-restore'
+
+- script: |
+    pwsh PlaywrightAutomation/src/PlaywrightAutomation.Tests/bin/$(buildConfiguration)/net8.0/playwright.ps1 install --with-deps
+  displayName: 'Install Playwright Browsers'
+
+- task: DotNetCoreCLI@2
+  displayName: 'Run Playwright Tests'
+  inputs:
+    command: 'test'
+    projects: 'PlaywrightAutomation/PlaywrightAutomation.sln'
+    arguments: '--configuration $(buildConfiguration) --no-build --logger "trx;LogFileName=test_results.trx"'
+  env:
+    TEST_ENVIRONMENT: 'Staging'
+
+- task: PublishTestResults@2
+  displayName: 'Publish TRX Test Results'
+  condition: always()
+  inputs:
+    testResultsFormat: 'VSTest'
+    testResultsFiles: '**/*.trx'
+
+- task: PublishBuildArtifacts@1
+  displayName: 'Publish Extent Reports & Traces'
+  condition: always()
+  inputs:
+    PathtoPublish: 'PlaywrightAutomation/src/PlaywrightAutomation.Tests/bin/$(buildConfiguration)/net8.0/reports'
+    ArtifactName: 'ExtentReports'
+    publishLocation: 'Container'

@@ -1,0 +1,64 @@
+name: Playwright C# Tests Execution
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Execution Environment (Development, Staging)'
+        required: true
+        default: 'Development'
+
+jobs:
+  test:
+    name: Run Playwright C# Tests
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Setup .NET 8 SDK
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+
+    - name: Restore NuGet Packages
+      run: dotnet restore PlaywrightAutomation/PlaywrightAutomation.sln
+
+    - name: Build Solution
+      run: dotnet build PlaywrightAutomation/PlaywrightAutomation.sln --configuration Release --no-restore
+
+    - name: Install Playwright Browsers & Dependencies
+      run: |
+        pwsh PlaywrightAutomation/src/PlaywrightAutomation.Tests/bin/Release/net8.0/playwright.ps1 install --with-deps
+
+    - name: Run Playwright Tests
+      env:
+        TEST_ENVIRONMENT: ${{ github.event.inputs.environment || 'Development' }}
+      run: |
+        dotnet test PlaywrightAutomation/PlaywrightAutomation.sln --configuration Release --no-build --logger "trx;LogFileName=test_results.trx"
+
+    - name: Upload Test Results (TRX)
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: test-results-trx
+        path: PlaywrightAutomation/src/PlaywrightAutomation.Tests/bin/Release/net8.0/TestResults/*.trx
+
+    - name: Upload ExtentReports HTML Report
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: extent-reports
+        path: PlaywrightAutomation/src/PlaywrightAutomation.Tests/bin/Release/net8.0/reports/
+
+    - name: Upload Playwright Failure Traces
+      uses: actions/upload-artifact@v4
+      if: failure()
+      with:
+        name: playwright-traces
+        path: PlaywrightAutomation/src/PlaywrightAutomation.Tests/bin/Release/net8.0/traces/

@@ -92,9 +92,9 @@ export const StoryDetailsFormatted = ({ story }) => {
 
   return (
     <div className="story-details-container">
-      {mainDesc && (
+      {storyStatement && (
         <div className="story-desc-markdown">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{mainDesc}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{storyStatement}</ReactMarkdown>
         </div>
       )}
 

@@ -2,13 +2,18 @@
 
 Requify Agent Pro is a high-intelligence multi-agent platform designed to replicate the comprehensive workflow of a Senior Business Analyst. It transforms raw requirements into engineering-ready backlogs using parallel reasoning, visual process mapping, and real-time Azure DevOps integration.
 
+---
+
 ## 🚀 Getting Started
 
 ### 1. Prerequisites
 - **Python 3.10+**
 - **Node.js 18+**
+- **.NET 8.0 SDK** (for Playwright C# Test Automation)
 - **Azure DevOps Project** (with Personal Access Token)
 - **API Keys**: Groq and Azure OpenAI.
+
+---
 
 ### 2. Backend Setup
 ```bash
@@ -23,7 +28,6 @@ Create a `.env` file in the `backend` directory:
 ```env
 # AI Providers
 GROQ_API_KEY=your_key
-
 
 # Azure DevOps
 ADO_ORG_URL=https://dev.azure.com/your_org
@@ -54,6 +58,29 @@ The application will be available at `http://localhost:5173`.
 
 ---
 
+### 4. Playwright C# Test Automation Setup & Execution
+The repository includes an enterprise **Playwright C# Automation Framework** (.NET 8 / NUnit) under [`PlaywrightAutomation/`](file:///c:/Users/VMADMIN/Videos/SURYA/baagent/PlaywrightAutomation/):
+
+#### Build & Install Browsers
+```powershell
+cd PlaywrightAutomation
+dotnet build PlaywrightAutomation.sln
+powershell -ExecutionPolicy Bypass -File src/PlaywrightAutomation.Tests/bin/Debug/net8.0/playwright.ps1 install
+```
+
+#### Run Automation Tests
+```powershell
+# Run all tests
+dotnet test --logger "trx;LogFileName=test_results.trx"
+
+# Run tests against Staging environment
+$env:TEST_ENVIRONMENT="Staging"; dotnet test
+```
+
+For detailed framework documentation, POM templates, logging configuration, and coding standards, refer to [`PlaywrightAutomation/README.md`](file:///c:/Users/VMADMIN/Videos/SURYA/baagent/PlaywrightAutomation/README.md).
+
+---
+
 ## 🧠 Key Features
 - **Intelligent Extraction**: Uses Groq/Azure OpenAI for high-speed requirement capturing.
 - **Expert Reviewers**: Unified Gap Analysis with QA, Security, and UX audits.
@@ -61,8 +88,11 @@ The application will be available at `http://localhost:5173`.
 - **Release Strategist**: AI-driven MoSCoW prioritization and delivery roadmap.
 - **ADO Control Platform**: Real-time bidirectional sync with Azure DevOps work items.
 - **Capacity Planner**: Workload distribution and bottleneck detection.
+- **Automation Framework**: Modular Playwright C# test automation framework with POM, Serilog logging, ExtentReports HTML reporting, and trace capture.
+
+---
 
 ## 🛠 Tech Stack
 - **Backend**: FastAPI, SQLAlchemy, Llama 3.1 70B (via Groq), Azure OpenAI.
 - **Frontend**: React, Vite, Vanilla CSS (Glassmorphism), Mermaid.js.
-
+- **Test Automation**: Playwright C#, .NET 8.0, NUnit, Serilog, ExtentReports, Polly.

@@ -1,0 +1,130 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="b241c27d-83c9-4d88-bc5f-f24b9c4e8c2d" name="VMADMIN@lob-demo-vm 2026-08-24 09:57:28" runUser="lob-demo-vm\VMADMIN" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-08-24T09:57:28.6098513+00:00" queuing="2026-08-24T09:57:28.6098517+00:00" start="2026-08-24T09:57:10.4927572+00:00" finish="2026-08-24T09:57:41.7639025+00:00" />
+  <TestSettings name="default" id="3481f4a0-0ad7-4b2c-8eee-8162c1fa6bbc">
+    <Deployment runDeploymentRoot="VMADMIN_lob-demo-vm_2026-08-24_09_57_28" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="86bc7950-38c2-483b-a2e7-5866778ce25b" testId="3e9e31be-0194-4bd2-9c89-15ed415332f4" testName="TestUserLogout_RedirectsToLoginPage" computerName="lob-demo-vm" duration="00:00:15.8114810" startTime="2026-08-24T09:57:13.7881996+00:00" endTime="2026-08-24T09:57:29.6000214+00:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="86bc7950-38c2-483b-a2e7-5866778ce25b">
+      <Output>
+        <StdOut>[09:57:20 INF] === Starting Test: TestUserLogout_RedirectsToLoginPage ===&#xD;
+[09:57:20 INF] [STEP] Performing login for user: standard_user&#xD;
+[09:57:20 INF] Navigating to URL: https://saucedemo.com&#xD;
+[09:57:24 INF] Filling 'Username' with value: standard_user&#xD;
+[09:57:26 INF] Filling 'Password' with value: *****&#xD;
+[09:57:27 INF] Clicking on Login Button&#xD;
+[09:57:28 INF] [STEP] Performing user logout&#xD;
+[09:57:28 INF] Clicking on Menu Button&#xD;
+[09:57:28 INF] Clicking on Logout Link&#xD;
+[09:57:29 INF] Test PASSED: TestUserLogout_RedirectsToLoginPage</StdOut>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="2bbf391f-4e17-4208-be5a-fddcb1e11d11" testId="02dd43f7-e262-5cdc-2b87-d7c54ec7c0cc" testName="TestValidLogin_Succeeds" computerName="lob-demo-vm" duration="00:00:04.0579320" startTime="2026-08-24T09:57:28.6177554+00:00" endTime="2026-08-24T09:57:32.6757758+00:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="2bbf391f-4e17-4208-be5a-fddcb1e11d11">
+      <Output>
+        <StdOut>[09:57:30 INF] === Starting Test: TestValidLogin_Succeeds ===&#xD;
+[09:57:30 INF] [STEP] Performing login for user: standard_user&#xD;
+[09:57:30 INF] Navigating to URL: https://saucedemo.com&#xD;
+[09:57:31 INF] Filling 'Username' with value: standard_user&#xD;
+[09:57:31 INF] Filling 'Password' with value: *****&#xD;
+[09:57:31 INF] Clicking on Login Button&#xD;
+[09:57:32 INF] Test PASSED: TestValidLogin_Succeeds</StdOut>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="efa1b592-0ba5-4b53-87c3-f4e44f32f211" testId="a229ad64-2ae7-cb39-eb9d-7718c0a132a6" testName="TestInvalidLogin_DisplaysErrorMessage" computerName="lob-demo-vm" duration="00:00:14.7373340" startTime="2026-08-24T09:57:13.7844336+00:00" endTime="2026-08-24T09:57:28.5220143+00:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="efa1b592-0ba5-4b53-87c3-f4e44f32f211">
+      <Output>
+        <StdOut>[09:57:20 INF] === Starting Test: TestInvalidLogin_DisplaysErrorMessage ===&#xD;
+[09:57:20 INF] Navigating to URL: https://saucedemo.com&#xD;
+[09:57:24 INF] Filling 'Username' with value: invalid_user&#xD;
+[09:57:26 INF] Filling 'Password' with value: *****&#xD;
+[09:57:27 INF] Clicking on Login Button&#xD;
+[09:57:28 INF] Test PASSED: TestInvalidLogin_DisplaysErrorMessage</StdOut>
+      </Output>
+    </UnitTestResult>
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="TestValidLogin_Succeeds" storage="c:\users\vmadmin\videos\surya\baagent\playwrightautomation\src\playwrightautomation.tests\bin\debug\net8.0\playwrightautomation.tests.dll" id="02dd43f7-e262-5cdc-2b87-d7c54ec7c0cc">
+      <Execution id="2bbf391f-4e17-4208-be5a-fddcb1e11d11" />
+      <TestMethod codeBase="C:\Users\VMADMIN\Videos\SURYA\baagent\PlaywrightAutomation\src\PlaywrightAutomation.Tests\bin\Debug\net8.0\PlaywrightAutomation.Tests.dll" adapterTypeName="executor://nunit3testexecutor/" className="PlaywrightAutomation.Tests.Tests.LoginTests" name="TestValidLogin_Succeeds" />
+    </UnitTest>
+    <UnitTest name="TestInvalidLogin_DisplaysErrorMessage" storage="c:\users\vmadmin\videos\surya\baagent\playwrightautomation\src\playwrightautomation.tests\bin\debug\net8.0\playwrightautomation.tests.dll" id="a229ad64-2ae7-cb39-eb9d-7718c0a132a6">
+      <Execution id="efa1b592-0ba5-4b53-87c3-f4e44f32f211" />
+      <TestMethod codeBase="C:\Users\VMADMIN\Videos\SURYA\baagent\PlaywrightAutomation\src\PlaywrightAutomation.Tests\bin\Debug\net8.0\PlaywrightAutomation.Tests.dll" adapterTypeName="executor://nunit3testexecutor/" className="PlaywrightAutomation.Tests.Tests.LoginTests" name="TestInvalidLogin_DisplaysErrorMessage" />
+    </UnitTest>
+    <UnitTest name="TestUserLogout_RedirectsToLoginPage" storage="c:\users\vmadmin\videos\surya\baagent\playwrightautomation\src\playwrightautomation.tests\bin\debug\net8.0\playwrightautomation.tests.dll" id="3e9e31be-0194-4bd2-9c89-15ed415332f4">
+      <Execution id="86bc7950-38c2-483b-a2e7-5866778ce25b" />
+      <TestMethod codeBase="C:\Users\VMADMIN\Videos\SURYA\baagent\PlaywrightAutomation\src\PlaywrightAutomation.Tests\bin\Debug\net8.0\PlaywrightAutomation.Tests.dll" adapterTypeName="executor://nunit3testexecutor/" className="PlaywrightAutomation.Tests.Tests.DashboardTests" name="TestUserLogout_RedirectsToLoginPage" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="3e9e31be-0194-4bd2-9c89-15ed415332f4" executionId="86bc7950-38c2-483b-a2e7-5866778ce25b" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="02dd43f7-e262-5cdc-2b87-d7c54ec7c0cc" executionId="2bbf391f-4e17-4208-be5a-fddcb1e11d11" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="a229ad64-2ae7-cb39-eb9d-7718c0a132a6" executionId="efa1b592-0ba5-4b53-87c3-f4e44f32f211" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="Results Not in a List" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="All Loaded Results" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Completed">
+    <Counters total="3" executed="3" passed="3" failed="0" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>NUnit Adapter 4.6.0.0: Test execution started&#xD;
+Running all tests in C:\Users\VMADMIN\Videos\SURYA\baagent\PlaywrightAutomation\src\PlaywrightAutomation.Tests\bin\Debug\net8.0\PlaywrightAutomation.Tests.dll&#xD;
+   NUnit3TestExecutor discovered 3 of 3 NUnit test cases using Current Discovery mode, Non-Explicit run&#xD;
+[INFO] Initializing Test Suite Execution...&#xD;
+[INFO] Initializing Test Suite Execution...&#xD;
+[INFO] === Starting Test: TestUserLogout_RedirectsToLoginPage ===&#xD;
+[INFO] === Starting Test: TestInvalidLogin_DisplaysErrorMessage ===&#xD;
+[INFO] Navigating to URL: https://saucedemo.com&#xD;
+[INFO] [STEP] Performing login for user: standard_user&#xD;
+[INFO] Navigating to URL: https://saucedemo.com&#xD;
+[INFO] Filling 'Username' with value: standard_user&#xD;
+[INFO] Filling 'Username' with value: invalid_user&#xD;
+[INFO] Filling 'Password' with value: *****&#xD;
+[INFO] Filling 'Password' with value: *****&#xD;
+[INFO] Clicking on Login Button&#xD;
+[INFO] Clicking on Login Button&#xD;
+[INFO] Test PASSED: TestInvalidLogin_DisplaysErrorMessage&#xD;
+[INFO] [STEP] Performing user logout&#xD;
+[INFO] Clicking on Menu Button&#xD;
+[09:57:20 INF] === Starting Test: TestInvalidLogin_DisplaysErrorMessage ===&#xD;
+[09:57:20 INF] Navigating to URL: https://saucedemo.com&#xD;
+[09:57:24 INF] Filling 'Username' with value: invalid_user&#xD;
+[09:57:26 INF] Filling 'Password' with value: *****&#xD;
+[09:57:27 INF] Clicking on Login Button&#xD;
+[09:57:28 INF] Test PASSED: TestInvalidLogin_DisplaysErrorMessage&#xD;
+&#xD;
+[INFO] Clicking on Logout Link&#xD;
+[INFO] Test PASSED: TestUserLogout_RedirectsToLoginPage&#xD;
+[09:57:20 INF] === Starting Test: TestUserLogout_RedirectsToLoginPage ===&#xD;
+[09:57:20 INF] [STEP] Performing login for user: standard_user&#xD;
+[09:57:20 INF] Navigating to URL: https://saucedemo.com&#xD;
+[09:57:24 INF] Filling 'Username' with value: standard_user&#xD;
+[09:57:26 INF] Filling 'Password' with value: *****&#xD;
+[09:57:27 INF] Clicking on Login Button&#xD;
+[09:57:28 INF] [STEP] Performing user logout&#xD;
+[09:57:28 INF] Clicking on Menu Button&#xD;
+[09:57:28 INF] Clicking on Logout Link&#xD;
+[09:57:29 INF] Test PASSED: TestUserLogout_RedirectsToLoginPage&#xD;
+&#xD;
+[INFO] Flushing ExtentReports HTML Report...&#xD;
+[INFO] === Starting Test: TestValidLogin_Succeeds ===&#xD;
+[INFO] [STEP] Performing login for user: standard_user&#xD;
+[INFO] Navigating to URL: https://saucedemo.com&#xD;
+[INFO] Filling 'Username' with value: standard_user&#xD;
+[INFO] Filling 'Password' with value: *****&#xD;
+[INFO] Clicking on Login Button&#xD;
+[INFO] Test PASSED: TestValidLogin_Succeeds&#xD;
+[09:57:30 INF] === Starting Test: TestValidLogin_Succeeds ===&#xD;
+[09:57:30 INF] [STEP] Performing login for user: standard_user&#xD;
+[09:57:30 INF] Navigating to URL: https://saucedemo.com&#xD;
+[09:57:31 INF] Filling 'Username' with value: standard_user&#xD;
+[09:57:31 INF] Filling 'Password' with value: *****&#xD;
+[09:57:31 INF] Clicking on Login Button&#xD;
+[09:57:32 INF] Test PASSED: TestValidLogin_Succeeds&#xD;
+&#xD;
+[INFO] Flushing ExtentReports HTML Report...&#xD;
+NUnit Adapter 4.6.0.0: Test execution complete&#xD;
+</StdOut>
+    </Output>
+  </ResultSummary>
+</TestRun>
