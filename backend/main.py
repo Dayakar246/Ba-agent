@@ -12,13 +12,13 @@ if sys.stderr and hasattr(sys.stderr, 'reconfigure'):
 
 import uvicorn
 from services.db_service import init_db, get_db
-from models.models import Document, Analysis, Approval, ProjectContext, ProjectStateModel, AuditLog
+from models.models import Document, Analysis, Approval, ProjectStateModel
 from agents.extraction import ExtractionAgent
 from agents.analysis import AnalysisAgent
 from agents.functional_spec import FunctionalSpecAgent
 from agents.context_agent import ContextAgent
 from agents.backlog_gen import BacklogGenAgent
-from typing import Optional, List, Dict
+from typing import Optional, Dict
 from pydantic import BaseModel
 from agents.approval import ApprovalAgent
 from agents.automation import AutomationAgent
@@ -39,15 +39,15 @@ from dotenv import load_dotenv
 load_dotenv(override=True)
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Request, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
 import os
 import uuid
 import json
+import aiofiles
 import fitz # PyMuPDF
 import markdown
-from fastapi.responses import FileResponse, JSONResponse, HTMLResponse, Response
-from pydantic import BaseModel
+from fastapi.responses import JSONResponse, HTMLResponse, Response, StreamingResponse
+
+PDF_MIME_TYPE = "application/pdf"
 
 class ADOQueryRequest(BaseModel):
     query: str
@@ -65,7 +65,7 @@ if env_origins:
     allowed_origins.extend(env_origins.split(","))
     
 # Remove duplicates and '*' if credentials are True
-allowed_origins = list(set([o.strip() for o in allowed_origins if o.strip() and o.strip() != "*"]))
+allowed_origins = list({o.strip() for o in allowed_origins if o.strip() and o.strip() != "*"})
 
 app.add_middleware(
     CORSMiddleware,
@@ -81,7 +81,6 @@ async def startup_event():
     try:
         init_db()
         print(" Knowledge Vault sync is currently disabled per user request...")
-        # import asyncio
         # asyncio.create_task(knowledge_agent.sync_vault())
         print(" Startup sequence complete.")
     except Exception as e:
@@ -125,31 +124,31 @@ teams_bot = BATeamsBot()
 
 
 
-@app.get("/project-context")
+@app.get("/project-context", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def get_project_context(db: Session = Depends(get_db)):
     context = await context_agent.get_project_context(db=db)
     return {"context": context}
 
-@app.get("/sprint-metrics")
+@app.get("/sprint-metrics", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def get_sprint_metrics():
     metrics = await analytics_agent.get_sprint_metrics()
     return metrics
 
-@app.get("/documents")
+@app.get("/documents", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def get_documents(project_id: str = None, db: Session = Depends(get_db)):
     query = db.query(Document)
     if project_id:
         query = query.filter(Document.project_id == project_id)
     return query.order_by(Document.upload_date.desc()).all()
 
-@app.get("/analyses")
+@app.get("/analyses", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def get_analyses(project_id: str = None, db: Session = Depends(get_db)):
     query = db.query(Analysis)
     if project_id:
         query = query.filter(Analysis.project_id == project_id)
     return query.order_by(Analysis.date.desc()).all()
 
-@app.get("/ado-work-items")
+@app.get("/ado-work-items", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def get_ado_work_items():
     """Fetches real-time work items from Azure DevOps."""
     try:
@@ -159,10 +158,10 @@ async def get_ado_work_items():
         return items
     except Exception as e:
         import logging
-        logging.error(f"ADO Fetch Error: {str(e)}")
+        logging.exception("An error occurred")
         raise HTTPException(status_code=500, detail=f"Failed to fetch live ADO items: {str(e)}")
 
-@app.get("/ado-iterations")
+@app.get("/ado-iterations", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def get_ado_iterations():
     try:
         from services.ado_service import AzureDevOpsService
@@ -171,10 +170,10 @@ async def get_ado_iterations():
         return iterations
     except Exception as e:
         import logging
-        logging.error(f"ADO Iteration Fetch Error: {str(e)}")
+        logging.exception("An error occurred")
         raise HTTPException(status_code=500, detail=f"Failed to fetch iterations: {str(e)}")
 
-@app.get("/ado-team")
+@app.get("/ado-team", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def get_ado_team():
     try:
         from services.ado_service import AzureDevOpsService
@@ -184,7 +183,7 @@ async def get_ado_team():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch ADO team: {str(e)}")
 
-@app.patch("/update-ado-work-item")
+@app.patch("/update-ado-work-item", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def update_ado_work_item(payload: dict):
     try:
         item_id = payload.get("id")
@@ -199,9 +198,8 @@ async def update_ado_work_item(payload: dict):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to update ADO item: {str(e)}")
 
-from fastapi import Form
 
-@app.get("/api/telemetry")
+@app.get("/api/telemetry", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def get_telemetry(db: Session = Depends(get_db)):
     """
     Fetches the LLMOps Telemetry data for the Admin Dashboard.
@@ -227,7 +225,7 @@ class SprintAssignRequest(BaseModel):
     sprint_path: str
     items: list[str]
 
-@app.get("/api/sprint-planning/backlog")
+@app.get("/api/sprint-planning/backlog", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def get_sprint_backlog():
     try:
         from services.ado_service import AzureDevOpsService
@@ -237,7 +235,7 @@ async def get_sprint_backlog():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/sprint-planning/iterations")
+@app.get("/api/sprint-planning/iterations", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def get_sprint_iterations():
     try:
         from services.ado_service import AzureDevOpsService
@@ -247,7 +245,7 @@ async def get_sprint_iterations():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/sprint-planning/assign")
+@app.post("/api/sprint-planning/assign", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def assign_sprint(req: SprintAssignRequest):
     try:
         from services.ado_service import AzureDevOpsService
@@ -257,7 +255,7 @@ async def assign_sprint(req: SprintAssignRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/ingest")
+@app.post("/ingest", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def ingest_document(
     file: UploadFile = File(...), 
     channel: str = Form("document"),
@@ -273,35 +271,35 @@ async def ingest_document(
     doc_id = str(uuid.uuid4())
     temp_path = f"temp_{doc_id}_{file.filename}"
 
-    print(f"\n" + "="*70)
+    print("\n" + "="*70)
     print(f" [API: /ingest] STARTING: Full Pipeline Ingestion for '{file.filename}'")
     print(f"   - Channel  : {channel} | LOB: {lob} | DocID: {doc_id}")
     print(f"   - File Size: {len(file_bytes)} bytes")
     print(f"   - SHA-256  : {file_hash}")
-    print(f"   - Mode     : FULL PIPELINE EXECUTION (Document Intelligence + LLM + Vector Upsert)")
+    print("   - Mode     : FULL PIPELINE EXECUTION (Document Intelligence + LLM + Vector Upsert)")
     print("="*70)
 
-    with open(temp_path, "wb") as buffer:
-        buffer.write(file_bytes)
+    async with aiofiles.open(temp_path, "wb") as buffer:
+        await buffer.write(file_bytes)
     
     try:
         # Extract content based on channel and file type
         text_content = ""
         
         if channel == "visual":
-            print(f"INFO: Visual Channel detected. Initializing Vision Agent...")
+            print("INFO: Visual Channel detected. Initializing Vision Agent...")
             from services.llm_service import LLMService
             llm = LLMService()
             vision_prompt = "Describe this wireframe or requirement image in detail. Extract all UI elements, data fields, and functional interactions visible."
             text_content = await llm.generate_with_vision(temp_path, vision_prompt)
         elif channel == "meeting":
-            print(f"INFO: Meeting Channel detected. Processing transcript...")
-            with open(temp_path, "r", encoding="utf-8", errors="ignore") as f:
-                text_content = f.read()
+            print("INFO: Meeting Channel detected. Processing transcript...")
+            async with aiofiles.open(temp_path, "r", encoding="utf-8", errors="ignore") as f:
+                text_content = await f.read()
         elif channel == "text":
-            print(f"INFO: Direct Text Channel detected.")
-            with open(temp_path, "r", encoding="utf-8", errors="ignore") as f:
-                text_content = f.read()
+            print("INFO: Direct Text Channel detected.")
+            async with aiofiles.open(temp_path, "r", encoding="utf-8", errors="ignore") as f:
+                text_content = await f.read()
         else:
             # Deep Document Parsing (PDF, DOCX, XLSX + Embedded)
             from services.document_parser import extract_all_text
@@ -315,7 +313,7 @@ async def ingest_document(
         orchestrator.get_or_create_project(doc_id, lob=lob)
         
         # Run context-aware extraction passing file_hash for deterministic vector keying
-        print(f" [API: /ingest] Triggering Orchestrator for extraction analysis...")
+        print(" [API: /ingest] Triggering Orchestrator for extraction analysis...")
         orchestrator_result = await orchestrator.run_extraction(doc_id, text_content, context_type=channel, file_hash=file_hash)
         data = orchestrator_result["extraction"]
         ambiguity_report = orchestrator_result.get("ambiguity_report", {})
@@ -342,14 +340,14 @@ async def ingest_document(
         db.add(new_doc)
         db.commit()
         
-        print(f" [API: /ingest] COMPLETED Successfully! Full pipeline executed & Azure Search vectors upserted.")
+        print(" [API: /ingest] COMPLETED Successfully! Full pipeline executed & Azure Search vectors upserted.")
         return {"document_id": doc_id, "extraction": data, "ambiguity_report": ambiguity_report, "file_hash": file_hash}
     except Exception as e:
         db.rollback()
         print(f" [API: /ingest] ERROR: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/traceability/{document_id}")
+@app.get("/traceability/{document_id}", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def get_traceability(document_id: str, db: Session = Depends(get_db)):
     from services.storage_service import storage_service
 
@@ -446,7 +444,7 @@ async def get_traceability(document_id: str, db: Session = Depends(get_db)):
 
     return {"document_id": document_id, "matrix": matrix}
 
-@app.get("/knowledge/search")
+@app.get("/knowledge/search", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def search_knowledge(q: str):
     """
     Semantic search across organizational memory.
@@ -461,7 +459,7 @@ class PlaywrightExportPayload(BaseModel):
     filename: Optional[str] = None
     script_code: str
 
-@app.post("/playwright/export")
+@app.post("/playwright/export", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def export_playwright_script(payload: PlaywrightExportPayload):
     """
     Pushes generated Playwright TypeScript test scripts into repository tests directory & Azure Storage.
@@ -482,8 +480,8 @@ async def export_playwright_script(payload: PlaywrightExportPayload):
         header = f"// [BA AGENT AUTO-GENERATED PLAYWRIGHT SPEC]\n// Document ID: {payload.document_id}\n// Pushed Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
         full_code = header + payload.script_code if not payload.script_code.startswith("// [BA AGENT") else payload.script_code
 
-        with open(file_path, "w", encoding="utf-8") as f:
-            f.write(full_code)
+        async with aiofiles.open(file_path, "w", encoding="utf-8") as f:
+            await f.write(full_code)
             
         storage_service.save_json_artifact(payload.document_id, "playwright_script", {
             "filename": filename,
@@ -500,7 +498,7 @@ async def export_playwright_script(payload: PlaywrightExportPayload):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Playwright Export Failed: {str(e)}")
 
-@app.post("/storage/sync-all-past-analyses")
+@app.post("/storage/sync-all-past-analyses", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def sync_all_past_analyses(db: Session = Depends(get_db)):
     """
     Backfills and synchronizes all past completed analysis sessions from database to Azure Blob Storage.
@@ -547,7 +545,7 @@ async def sync_all_past_analyses(db: Session = Depends(get_db)):
         "artifacts_synced": synced_count
     }
 
-@app.get("/playwright/import")
+@app.get("/playwright/import", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def import_playwright_specs():
     """
     Scans and imports existing & pushed Playwright .spec.ts test scripts from repository tests folder.
@@ -574,8 +572,8 @@ test('Existing Test: Customer Login and Navigation', async ({ page }) => {
 });
 """
         try:
-            with open(sample_path, "w", encoding="utf-8") as f:
-                f.write(sample_code)
+            async with aiofiles.open(sample_path, "w", encoding="utf-8") as f:
+                await f.write(sample_code)
         except Exception:
             pass
 
@@ -585,8 +583,8 @@ test('Existing Test: Customer Login and Navigation', async ({ page }) => {
             if file.endswith(".ts") or file.endswith(".js"):
                 full_path = os.path.join(root, file)
                 try:
-                    with open(full_path, "r", encoding="utf-8", errors="ignore") as f:
-                        content = f.read()
+                    async with aiofiles.open(full_path, "r", encoding="utf-8", errors="ignore") as f:
+                        content = await f.read()
                         
                     test_titles = re.findall(r"test\s*\(\s*['\"]([^'\"]+)['\"]", content)
                     locators = re.findall(r"page\.(?:locator|fill|click|getByRole|getByText)\s*\(\s*['\"]([^'\"]+)['\"]", content)
@@ -609,7 +607,7 @@ test('Existing Test: Customer Login and Navigation', async ({ page }) => {
                     
     return {"specs": specs, "total_files": len(specs)}
 
-@app.get("/playwright/download/{document_id}")
+@app.get("/playwright/download/{document_id}", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def download_playwright_script(document_id: str, db: Session = Depends(get_db)):
     """
     Downloads Playwright TypeScript test file attachment.
@@ -641,7 +639,7 @@ async def download_playwright_script(document_id: str, db: Session = Depends(get
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
 
-@app.get("/reports/traceability/{document_id}")
+@app.get("/reports/traceability/{document_id}", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def download_report(document_id: str, db: Session = Depends(get_db)):
     """
     Generates and returns a PDF Traceability Report.
@@ -656,11 +654,11 @@ async def download_report(document_id: str, db: Session = Depends(get_db)):
     from fastapi.responses import StreamingResponse
     return StreamingResponse(
         pdf_buffer, 
-        media_type="application/pdf",
+        media_type=PDF_MIME_TYPE,
         headers={"Content-Disposition": f"attachment; filename=Traceability_Report_{document_id}.pdf"}
     )
 
-@app.get("/audit/logs/{document_id}")
+@app.get("/audit/logs/{document_id}", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def get_audit_logs(document_id: str):
     """
     Retrieves the immutable audit trail for a project.
@@ -669,7 +667,7 @@ async def get_audit_logs(document_id: str):
     logs = AuditService.get_logs(document_id)
     return {"document_id": document_id, "logs": logs}
 
-@app.get("/analysis/{analysis_id}")
+@app.get("/analysis/{analysis_id}", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def get_analysis_details(analysis_id: str, db: Session = Depends(get_db)):
     analysis = db.query(Analysis).filter(Analysis.id == analysis_id).first()
     if not analysis:
@@ -727,20 +725,19 @@ async def get_analysis_details(analysis_id: str, db: Session = Depends(get_db)):
     return res_dict
 
 
-@app.post("/analyze")
+@app.post("/analyze", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def analyze_requirements(payload: dict, db: Session = Depends(get_db)):
     doc_id = payload.get("document_id")
-    answers = payload.get("answers") # Optional clarifications
     enabled_modules = payload.get("enabled_modules")
     
-    print(f"\n" + "="*50)
+    print("\n" + "="*50)
     print(f" [API: /analyze] STARTING: Analyzing Document {doc_id}")
     print(f"   - Enabled Modules: {enabled_modules}")
     print("="*50)
     
     # Trigger LangGraph for Extraction & Gaps
     try:
-        print(f" [API: /analyze] Triggering LangGraph Swarm...")
+        print(" [API: /analyze] Triggering LangGraph Swarm...")
         
         # We start a new thread for this analysis
         analysis_id = str(uuid.uuid4())
@@ -804,18 +801,17 @@ async def analyze_requirements(payload: dict, db: Session = Depends(get_db)):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Orchestrator Analysis Error: {str(e)}")
 
-@app.post("/generate-functional-spec")
+@app.post("/generate-functional-spec", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def generate_functional_spec(payload: dict, db: Session = Depends(get_db)):
     analysis_id = payload.get("analysis_id")
-    tech_context = payload.get("tech_context", None)
     
-    print(f"\n" + "="*50)
+    print("\n" + "="*50)
     print(f" [API: /generate-functional-spec] STARTING: Functional Spec Generation for Analysis ID {analysis_id}")
     print("="*50)
     
     analysis = db.query(Analysis).filter(Analysis.id == analysis_id).first()
     if not analysis:
-        print(f" [API: /generate-functional-spec] ERROR: Analysis not found.")
+        print(" [API: /generate-functional-spec] ERROR: Analysis not found.")
         raise HTTPException(status_code=404, detail="Analysis not found")
         
     doc = db.query(Document).filter(Document.id == analysis.document_id).first()
@@ -845,7 +841,7 @@ async def generate_functional_spec(payload: dict, db: Session = Depends(get_db))
         if isinstance(spec_data["functional_spec"], str):
             try:
                 spec_data["functional_spec"] = json.loads(spec_data["functional_spec"])
-            except:
+            except Exception:
                 pass
     else:
         # Resume the Main LangGraph Swarm
@@ -889,16 +885,16 @@ async def generate_functional_spec(payload: dict, db: Session = Depends(get_db))
         analysis.critic_review = spec_data.get("critic_review")
         db.commit()
     
-    print(f" [API: /generate-functional-spec] COMPLETED Successfully!")
+    print(" [API: /generate-functional-spec] COMPLETED Successfully!")
     return spec_data
 
-@app.post("/generate-backlog")
+@app.post("/generate-backlog", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def generate_backlog(payload: dict, db: Session = Depends(get_db)):
     analysis_id = payload.get("analysis_id")
     spec_content = payload.get("functional_spec")
     
-    print(f"\n" + "="*50)
-    print(f" [API: /generate-backlog] STARTING: Backlog Generation")
+    print("\n" + "="*50)
+    print(" [API: /generate-backlog] STARTING: Backlog Generation")
     print(f"   - Analysis ID: {analysis_id}")
     print("="*50)
     
@@ -909,10 +905,10 @@ async def generate_backlog(payload: dict, db: Session = Depends(get_db)):
             document_id = analysis.document_id
             
     if not document_id:
-        print(f" [API: /generate-backlog] ERROR: document_id not found.")
+        print(" [API: /generate-backlog] ERROR: document_id not found.")
         raise HTTPException(status_code=400, detail="Missing document_id or analysis_id")
         
-    print(f" [API: /generate-backlog] Triggering LangGraph Swarm...")
+    print(" [API: /generate-backlog] Triggering LangGraph Swarm...")
     
     config = {"configurable": {"thread_id": analysis_id}}
     try:
@@ -922,9 +918,16 @@ async def generate_backlog(payload: dict, db: Session = Depends(get_db)):
         print(f" LangGraph state lost. Falling back to direct node invocation. ({str(e)})")
         from graph.nodes import backlog_node
         analysis = db.query(Analysis).filter(Analysis.id == analysis_id).first()
+        reviews = {}
+        if analysis:
+            if analysis.reviews:
+                reviews = analysis.reviews
+            elif analysis.results:
+                reviews = analysis.results.get("reviews", {})
+                
         state_mock = {
             "functional_spec": spec_content,
-            "reviews": analysis.reviews if analysis and analysis.reviews else (analysis.results.get("reviews", {}) if analysis and analysis.results else {})
+            "reviews": reviews
         }
         backlog_res = await backlog_node(state_mock)
         backlog_data = backlog_res.get("backlog")
@@ -942,10 +945,10 @@ async def generate_backlog(payload: dict, db: Session = Depends(get_db)):
             critic_review = analysis.critic_review
             db.commit()
 
-    print(f" [API: /generate-backlog] COMPLETED Successfully!")
+    print(" [API: /generate-backlog] COMPLETED Successfully!")
     return {"backlog": backlog_data, "critic_review": critic_review}
 
-@app.post("/generate-backlog-direct")
+@app.post("/generate-backlog-direct", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def generate_backlog_direct(
     file: UploadFile = File(...), 
     db: Session = Depends(get_db)
@@ -953,16 +956,15 @@ async def generate_backlog_direct(
     """
     Directly converts a raw BRD file into an ADO Backlog and Test Cases, skipping the Functional Spec process.
     """
-    print(f"\n" + "="*50)
+    print("\n" + "="*50)
     print(f" [API: /generate-backlog-direct] STARTING: Quick Backlog for '{file.filename}'")
     print("="*50)
     
-    import fitz
     doc_id = str(uuid.uuid4())
     temp_path = f"temp_direct_{doc_id}_{file.filename}"
     
-    with open(temp_path, "wb") as buffer:
-        buffer.write(await file.read())
+    async with aiofiles.open(temp_path, "wb") as buffer:
+        await buffer.write(await file.read())
         
     try:
         # 1. Extract raw text
@@ -973,13 +975,13 @@ async def generate_backlog_direct(
                 from services.adi_service import AzureDocIntelService
                 adi = AzureDocIntelService()
                 text_content = adi.extract_text(temp_path)
-            except:
+            except Exception:
                 doc = fitz.open(temp_path)
                 for page in doc: text_content += page.get_text()
                 doc.close()
         else:
-            with open(temp_path, "r", encoding="utf-8", errors="ignore") as f:
-                text_content = f.read()
+            async with aiofiles.open(temp_path, "r", encoding="utf-8", errors="ignore") as f:
+                text_content = await f.read()
                 
         # 2. Token Optimization & Compression
         import re
@@ -1000,14 +1002,14 @@ async def generate_backlog_direct(
                 print(f" [Token Optimization] Compressed down to {len(text_content)} chars!")
                 
         # 3. Generate Backlog
-        print(f" [Direct Mode] Generating Backlog from BRD...")
+        print(" [Direct Mode] Generating Backlog from BRD...")
         backlog_agent = BacklogGenAgent()
         backlog_data = await backlog_agent.generate_backlog_from_brd(text_content)
         
         if "error" in backlog_data:
             raise HTTPException(status_code=500, detail=backlog_data["error"])
             
-        print(f" [API: /generate-backlog-direct] COMPLETED Successfully!")
+        print(" [API: /generate-backlog-direct] COMPLETED Successfully!")
         return {
             "backlog": backlog_data,
             "test_cases": "Test cases are generating in the background..."
@@ -1021,13 +1023,13 @@ async def generate_backlog_direct(
         if os.path.exists(temp_path):
             os.remove(temp_path)
 
-@app.post("/generate-testcases-direct")
+@app.post("/generate-testcases-direct", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def generate_testcases_direct(payload: dict):
     """
     Generates test cases directly from a provided backlog JSON.
     """
-    print(f"\n" + "="*50)
-    print(f" [API: /generate-testcases-direct] STARTING: Background Test Cases")
+    print("\n" + "="*50)
+    print(" [API: /generate-testcases-direct] STARTING: Background Test Cases")
     try:
         backlog_data = payload.get("backlog")
         functional_spec = payload.get("functional_spec") or payload.get("trd") or ""
@@ -1050,15 +1052,15 @@ async def generate_testcases_direct(payload: dict):
         if doc_id:
             storage_service.save_json_artifact(doc_id, "test_cases", test_cases)
 
-        print(f" [API: /generate-testcases-direct] COMPLETED Successfully!")
+        print(" [API: /generate-testcases-direct] COMPLETED Successfully!")
         return {"test_cases": test_cases}
     except Exception as e:
         print(f" [API: /generate-testcases-direct] ERROR: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Test Case Gen Error: {str(e)}")
 
-@app.post("/prepare-approval")
+@app.post("/prepare-approval", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def prepare_approval(payload: dict, db: Session = Depends(get_db)):
-    print(f" [API: /prepare-approval] Preparing...")
+    print(" [API: /prepare-approval] Preparing...")
     analysis_id = payload.get("analysis_id")
     functional_spec = payload.get("functional_spec")
     backlog = payload.get("backlog")
@@ -1078,9 +1080,9 @@ async def prepare_approval(payload: dict, db: Session = Depends(get_db)):
     
     return {"approval_id": approval_id, "package": approval_data}
 
-@app.post("/request-approval")
+@app.post("/request-approval", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def request_approval(payload: dict, request: Request, db: Session = Depends(get_db)):
-    print(f" [API: /request-approval] Processing request...")
+    print(" [API: /request-approval] Processing request...")
     analysis_id = payload.get("analysis_id")
     backlog = payload.get("backlog")
     reviewer_email = payload.get("reviewer_email")
@@ -1150,7 +1152,7 @@ async def request_approval(payload: dict, request: Request, db: Session = Depend
 
     return {"status": "Approval Request Sent", "approval_id": approval_id}
 
-@app.get("/review-approval/{approval_id}")
+@app.get("/review-approval/{approval_id}", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def review_approval(approval_id: str, db: Session = Depends(get_db)):
     approval = db.query(Approval).filter(Approval.id == approval_id).first()
     if not approval:
@@ -1222,7 +1224,7 @@ class ApprovalDecision(BaseModel):
     action: str
     reason: str
 
-@app.post("/submit-approval-decision/{approval_id}")
+@app.post("/submit-approval-decision/{approval_id}", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def submit_approval_decision(approval_id: str, decision: ApprovalDecision, db: Session = Depends(get_db)):
     approval = db.query(Approval).filter(Approval.id == approval_id).first()
     if not approval or approval.status != "pending":
@@ -1255,7 +1257,11 @@ async def submit_approval_decision(approval_id: str, decision: ApprovalDecision,
         # OR we can execute it right here.
         # Since it takes time, let's just mark it and the user can see it in UI, or we can run it in a background task.
         import asyncio
-        asyncio.create_task(rework_analysis(approval.analysis_id, decision.reason, db))
+        if not hasattr(app, "bg_tasks"):
+            app.bg_tasks = set()
+        task = asyncio.create_task(rework_analysis(approval.analysis_id, decision.reason, db))
+        app.bg_tasks.add(task)
+        task.add_done_callback(app.bg_tasks.discard)
         
         return {"message": "Rejection noted. The BA Agent is reworking the specifications based on your feedback. You will receive a new email shortly."}
     
@@ -1264,10 +1270,6 @@ async def submit_approval_decision(approval_id: str, decision: ApprovalDecision,
 async def rework_analysis(analysis_id: str, feedback: str, db: Session):
     print(f" Reworking Analysis {analysis_id} with feedback: {feedback}")
     try:
-        from graph.workflow import workflow
-        from langgraph.checkpoint.memory import MemorySaver
-        
-        config = {"configurable": {"thread_id": analysis_id}}
         
         # We need to inject the feedback into the agent.
         # Since we are not using a deep conversational graph by default, 
@@ -1382,9 +1384,9 @@ async def rework_analysis(analysis_id: str, feedback: str, db: Session):
     except Exception as e:
         print(f" Error during rework loop: {e}")
 
-@app.get("/api/ado/work-items")
+@app.get("/api/ado/work-items", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def get_ado_work_items():
-    print(f" [API: /api/ado/work-items] Fetching existing Epics and Features...")
+    print(" [API: /api/ado/work-items] Fetching existing Epics and Features...")
     try:
         from services.ado_service import AzureDevOpsService
         ado_svc = AzureDevOpsService()
@@ -1395,7 +1397,7 @@ async def get_ado_work_items():
         print(f" Error fetching ADO work items: {e}")
         return JSONResponse(status_code=500, content={"error": str(e)})
 
-@app.post("/api/ado/generate-stories")
+@app.post("/api/ado/generate-stories", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def generate_ado_stories(payload: dict):
     epic_data = payload.get("epic", {})
     if not epic_data:
@@ -1411,36 +1413,36 @@ async def generate_ado_stories(payload: dict):
         
     return {"backlog": result}
 
-@app.post("/sync-backlog")
+@app.post("/sync-backlog", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def sync_backlog(payload: dict):
     project_id = payload.get("project_id")
     backlog = payload.get("backlog")
     
-    print(f"\n" + "="*50)
+    print("\n" + "="*50)
     print(f" [API: /sync-backlog] STARTING: Synchronizing project {project_id} to ADO")
     print("="*50)
     
     if not project_id or not backlog:
-        print(f" [API: /sync-backlog] ERROR: Missing project_id or backlog.")
+        print(" [API: /sync-backlog] ERROR: Missing project_id or backlog.")
         raise HTTPException(status_code=400, detail="Missing project_id or backlog data")
     
     result = await orchestrator.run_backlog_sync(project_id, backlog)
-    print(f" [API: /sync-backlog] COMPLETED Successfully!")
+    print(" [API: /sync-backlog] COMPLETED Successfully!")
     return result
 
-@app.post("/automate")
+@app.post("/automate", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def automate_backlog(payload: dict, db: Session = Depends(get_db)):
     # Keep this for legacy or manual sync if needed, but primary flow is now approval-based
-    print(f"\n" + "="*50)
-    print(f" [API: /automate] STARTING: Direct ADO Publishing")
+    print("\n" + "="*50)
+    print(" [API: /automate] STARTING: Direct ADO Publishing")
     print("="*50)
     backlog = payload.get("backlog")
     export_target = payload.get("export_target", "ado")
     result = await automation_agent.create_work_items(backlog, target=export_target)
-    print(f" [API: /automate] COMPLETED Successfully!")
+    print(" [API: /automate] COMPLETED Successfully!")
     return result
 
-@app.get("/download-spec/{doc_id}")
+@app.get("/download-spec/{doc_id}", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def download_functional_spec(doc_id: str, include_nfr = True, db: Session = Depends(get_db)):
     is_nfr_included = str(include_nfr).lower() not in ['false', '0', 'off', 'no']
     print(f"[API: /download-spec/{doc_id}] Requesting Full Discovery PDF export (include_nfr={is_nfr_included})...")
@@ -1544,7 +1546,7 @@ async def download_functional_spec(doc_id: str, include_nfr = True, db: Session 
     # Derive a meaningful, client-friendly document title from Executive Summary or Feature Overview
     doc_title_clean = ""
     if functional_spec and isinstance(functional_spec, str):
-        title_m = re.search(r"^#+\s*(?:Document Title|1\.\s*Executive Summary|Project Overview):\s*(.+)$", functional_spec, re.M | re.I) or re.search(r"^#\s+([^\n]+)$", functional_spec, re.M)
+        title_m = re.search(r"(?im)^#{1,6}[ \t]*(?:Document Title|1\.[ \t]*Executive Summary|Project Overview):[ \t]*([^\r\n]+)$", functional_spec) or re.search(r"(?m)^#[ \t]+([^\r\n]+)$", functional_spec)
         if title_m:
             candidate = title_m.group(1).strip()
             if candidate and "Functional Specification Document" not in candidate and "IEEE" not in candidate and "temp_" not in candidate:
@@ -1566,8 +1568,8 @@ async def download_functional_spec(doc_id: str, include_nfr = True, db: Session 
         base_dir = os.path.dirname(os.path.abspath(__file__))
         logo_path = os.path.join(base_dir, "..", "frontend", "public", "assets", "Valuemomentum_logo_dark.png")
         if os.path.exists(logo_path):
-            with open(logo_path, "rb") as image_file:
-                logo_base64 = base64.b64encode(image_file.read()).decode('utf-8')
+            async with aiofiles.open(logo_path, "rb") as image_file:
+                logo_base64 = base64.b64encode(await image_file.read()).decode('utf-8')
     except Exception as e:
         print(f"WARN: Logo encoding failed: {e}")
 
@@ -1579,12 +1581,21 @@ async def download_functional_spec(doc_id: str, include_nfr = True, db: Session 
         spec_text = functional_spec if isinstance(functional_spec, str) else json.dumps(functional_spec, indent=2)
         
         # Remove duplicate top-level title header if it repeats cover page title
-        spec_text = re.sub(r"^\s*#\s+[^\n]+\n+", "", spec_text)
+        spec_text = re.sub(r"^[ \t]*#[ \t]+[^\n]*\n+", "", spec_text)
 
         if not is_nfr_included:
             # Strip Section 4 Non-Functional Requirements if user unchecks NFR inclusion
-            spec_text = re.sub(r"(?:##\s*|#\s*)4\.\s*Non-Functional Requirements.*?(?=(?:##\s*|#\s*)\d+\.|\Z)", "", spec_text, flags=re.S | re.I)
-            spec_text = re.sub(r"##\s*4\.\s*Non-Functional Requirements.*", "", spec_text, flags=re.S | re.I)
+            lines = spec_text.split('\n')
+            new_lines = []
+            skip = False
+            for line in lines:
+                if re.match(r"(?i)^[ \t]*(?:##|#)[ \t]*4\.", line):
+                    skip = True
+                elif skip and re.match(r"^[ \t]*(?:##|#)[ \t]*\d+\.", line):
+                    skip = False
+                if not skip:
+                    new_lines.append(line)
+            spec_text = '\n'.join(new_lines)
             # Re-number Section 5 and Section 6 to Section 4 and Section 5 when NFRs are omitted
             spec_text = re.sub(r"##\s*5\.\s*", "## 4. ", spec_text)
             spec_text = re.sub(r"##\s*6\.\s*", "## 5. ", spec_text)
@@ -1599,7 +1610,7 @@ async def download_functional_spec(doc_id: str, include_nfr = True, db: Session 
         spec_text = re.sub(r"-\s*(\*\*[^*]+\*\*:)", r"\n- \1", spec_text)
 
         # Strip redundant introductory summary lines under Section 3
-        spec_text = re.sub(r"The functional requirements will be grouped into the following sub-system modules:[\s\S]*?(?=\n\n|\n###|\n[A-Z0-9]|\Z)", "", spec_text, flags=re.I)
+        spec_text = re.sub(r"(?i)The functional requirements will be grouped into the following sub-system modules:[^\n]*(?:\n(?!\n\n|\n###|\n[A-Z0-9])[^\n]*)*", "", spec_text)
 
         rendered_spec = markdown.markdown(spec_text, extensions=['extra', 'tables', 'fenced_code'])
 
@@ -1730,9 +1741,9 @@ async def download_functional_spec(doc_id: str, include_nfr = True, db: Session 
                 if bracket_match:
                     found_nums = re.findall(r"(?:REQ|FR)-(\d+)", bracket_match.group(1), re.I)
                     if found_nums:
-                        sorted_nums = sorted(list(set([int(n) for n in found_nums])))
+                        sorted_nums = sorted({int(n) for n in found_nums})
                         sorted_tags = ", ".join([f"REQ-{str(n).zfill(3)}" for n in sorted_nums])
-                        story_clean_title = re.sub(r"^\[.*?\]", f"[{sorted_tags}]", story_clean_title)
+                        story_clean_title = re.sub(r"^\[[^\]]*\]", f"[{sorted_tags}]", story_clean_title)
 
                 story_desc = story.get('description', '')
                 moscow = story.get('moscow', 'Must Have')
@@ -1744,8 +1755,8 @@ async def download_functional_spec(doc_id: str, include_nfr = True, db: Session 
                         clean_ac = ac.replace("\r\n", "\n")
                         lines = [line.strip() for line in clean_ac.split("\n") if line.strip()]
                         formatted_ac = "<br/>".join(lines)
-                        formatted_ac = re.sub(r"(?:,\s*|\s+)(When\s+)", r"<br/>\1", formatted_ac, flags=re.I)
-                        formatted_ac = re.sub(r"(?:,\s*|\s+)(Then\s+)", r"<br/>\1", formatted_ac, flags=re.I)
+                        formatted_ac = re.sub(r"(?i)[,\s]+(when\s+)", r"<br/>\1", formatted_ac)
+                        formatted_ac = re.sub(r"(?i)[,\s]+(then\s+)", r"<br/>\1", formatted_ac)
                         formatted_ac_list.append(formatted_ac)
                     else:
                         formatted_ac_list.append(str(ac))
@@ -1755,7 +1766,7 @@ async def download_functional_spec(doc_id: str, include_nfr = True, db: Session 
                 task_bullets = "".join([f"<li style='margin-bottom:4px;'>{t}</li>" for t in tasks_list]) if tasks_list else ""
 
                 formatted_story_body = story_desc if isinstance(story_desc, str) else str(story_desc)
-                invest_match = re.search(r"As\s+an?\s+[^,.]+,\s*I\s+want\s+to\s+[^,.]+,\s*so\s+that\s+[^.\n]+", formatted_story_body, re.I)
+                invest_match = re.search(r"(?i)As an? [^,]+,[ \t]*I want to [^,]+,[ \t]*so that [^\r\n]+", formatted_story_body)
                 if invest_match:
                     formatted_story_body = invest_match.group(0).strip()
                 else:
@@ -1841,9 +1852,9 @@ async def download_functional_spec(doc_id: str, include_nfr = True, db: Session 
             desc = tc.get('description') or tc.get('objective') or ''
 
             # Sanitize strings to strip escaped quotes, leading commas, or raw code leaks
-            clean_title = re.sub(r'^[":,\s\\]+|[":,\s\\]+$', '', str(title)).strip()
-            clean_story = re.sub(r'^[":,\s\\]+|[":,\s\\]+$', '', str(story_title)).strip()
-            clean_desc = re.sub(r'^[":,\s\\]+|[":,\s\\]+$', '', str(desc)).strip()
+            clean_title = str(title).strip(" \t\":,\\")
+            clean_story = str(story_title).strip(" \t\":,\\")
+            clean_desc = str(desc).strip(" \t\":,\\")
 
             if "page.goto" in clean_title or "async (" in clean_title:
                 code_match = re.search(r"Verify[^\n'\"\\]+", clean_title, re.I)
@@ -2153,16 +2164,20 @@ async def download_functional_spec(doc_id: str, include_nfr = True, db: Session 
         except Exception as e:
             print(f"WARN: Saving HTML/PDF blob package failed: {e}")
             
-    asyncio.create_task(asyncio.to_thread(_background_save_blob))
+    if not hasattr(app, "bg_tasks"):
+        app.bg_tasks = set()
+    task = asyncio.create_task(asyncio.to_thread(_background_save_blob))
+    app.bg_tasks.add(task)
+    task.add_done_callback(app.bg_tasks.discard)
 
     return HTMLResponse(content=html_content)
 
 # MS Teams Bot Endpoint
 from botbuilder.schema import Activity
 
-@app.post("/api/messages")
+@app.post("/api/messages", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def messages(req: Request):
-    print(f" [API: /api/messages] Incoming Teams activity...")
+    print(" [API: /api/messages] Incoming Teams activity...")
     if "application/json" in req.headers.get("Content-Type", ""):
         body = await req.json()
     else:
@@ -2184,15 +2199,15 @@ async def messages(req: Request):
 
 # --- MARKETPLACE DECOUPLED AGENTS ---
 from pydantic import BaseModel
-from typing import Dict, Any, List, Optional
+from typing import Any, Optional
 
 class ExtractRequest(BaseModel):
     document_id: str
     text_content: str
 
-@app.post("/api/agents/extract")
+@app.post("/api/agents/extract", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def marketplace_extract(req: ExtractRequest):
-    print(f" [API: /api/agents/extract] Requesting extraction...")
+    print(" [API: /api/agents/extract] Requesting extraction...")
     try:
         result = await orchestrator.run_extraction(req.document_id, req.text_content, "document")
         return result
@@ -2205,9 +2220,9 @@ class AnalyzeGapsRequest(BaseModel):
     extraction: Dict[str, Any]
     lob: str
 
-@app.post("/api/agents/analyze-gaps")
+@app.post("/api/agents/analyze-gaps", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def marketplace_analyze_gaps(req: AnalyzeGapsRequest):
-    print(f" [API: /api/agents/analyze-gaps] Requesting gap analysis...")
+    print(" [API: /api/agents/analyze-gaps] Requesting gap analysis...")
     try:
         db = next(get_db())
         context = await context_agent.get_project_context(db)
@@ -2224,9 +2239,9 @@ class GenerateFunctionalSpecRequest(BaseModel):
     lob: str
     brd_text: Optional[str] = None
 
-@app.post("/api/agents/generate-functional-spec")
+@app.post("/api/agents/generate-functional-spec", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def marketplace_generate_functional_spec(req: GenerateFunctionalSpecRequest):
-    print(f" [API: /api/agents/generate-functional-spec] Requesting Functional Spec generation...")
+    print(" [API: /api/agents/generate-functional-spec] Requesting Functional Spec generation...")
     try:
         db = next(get_db())
         context = await context_agent.get_project_context(db)
@@ -2255,9 +2270,9 @@ class SyncADORequest(BaseModel):
     ado_project: str
     ado_token: str
 
-@app.post("/api/agents/sync-ado")
+@app.post("/api/agents/sync-ado", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def marketplace_sync_ado(req: SyncADORequest):
-    print(f" [API: /api/agents/sync-ado] Requesting ADO sync...")
+    print(" [API: /api/agents/sync-ado] Requesting ADO sync...")
     try:
         from agents.backlog_gen import BacklogGenAgent
         backlog_agent = BacklogGenAgent()
@@ -2267,7 +2282,7 @@ async def marketplace_sync_ado(req: SyncADORequest):
         elif req.functional_spec_markdown:
             backlog = await backlog_agent.generate_backlog(req.functional_spec_markdown)
         else:
-            raise Exception("Either functional_spec_markdown or brd_text must be provided")
+            raise RuntimeError("Either functional_spec_markdown or brd_text must be provided")
             
         # Override environment temporarily for this sync
         os.environ["ADO_ORG_URL"] = f"https://dev.azure.com/{req.ado_org}/"
@@ -2283,9 +2298,9 @@ async def marketplace_sync_ado(req: SyncADORequest):
 class MemoryRequest(BaseModel):
     query: str
 
-@app.post("/api/agents/memory")
+@app.post("/api/agents/memory", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def marketplace_memory(req: MemoryRequest):
-    print(f" [API: /api/agents/memory] Requesting knowledge recall...")
+    print(" [API: /api/agents/memory] Requesting knowledge recall...")
     try:
         # We query the knowledge agent using the provided query and default to General LOB
         result = await knowledge_agent.retrieve_relevant_context(req.query, lob="General")
@@ -2300,7 +2315,7 @@ class ADOQueryRequest(BaseModel):
     ado_project: str
     ado_token: str
 
-@app.post("/api/agents/ado-query")
+@app.post("/api/agents/ado-query", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def marketplace_ado_query(req: ADOQueryRequest):
     try:
         # Override environment temporarily for this request context
@@ -2317,7 +2332,7 @@ class ChatRequest(BaseModel):
     message: str
     context: Optional[Dict[str, Any]] = None
 
-@app.post("/api/chat")
+@app.post("/api/chat", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def chat_endpoint(req: ChatRequest):
     try:
         response = await router_agent.route_query(req.message, req.context)
@@ -2329,7 +2344,7 @@ class DraftTestCasesRequest(BaseModel):
     backlog_json: Dict[str, Any]
     analysis_id: Optional[str] = None
 
-@app.post("/api/agents/draft-test-cases")
+@app.post("/api/agents/draft-test-cases", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def draft_test_cases_endpoint(req: DraftTestCasesRequest, db: Session = Depends(get_db)):
     try:
         config = {"configurable": {"thread_id": req.analysis_id}}
@@ -2366,7 +2381,7 @@ class RegenerateRequest(BaseModel):
     feedback: str
     analysis_id: str | None = None
 
-@app.post("/api/agents/regenerate-artifact")
+@app.post("/api/agents/regenerate-artifact", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def regenerate_artifact(req: RegenerateRequest, db: Session = Depends(get_db)):
     try:
         prompt = f"""
@@ -2402,7 +2417,7 @@ Output ONLY the rewritten artifact, preserving its exact original structure (Mar
                             clean_str = re.sub(r'^```[a-z]*\n', '', clean_str, flags=re.I)
                             clean_str = re.sub(r'\n```$', '', clean_str).strip()
                         parsed_content = json.loads(clean_str)
-                    except:
+                    except Exception:
                         pass # Fallback to string if parsing fails
                         
                 results_copy[req.artifact_type] = parsed_content
@@ -2420,7 +2435,7 @@ Output ONLY the rewritten artifact, preserving its exact original structure (Mar
 class QAGenerateRequest(BaseModel):
     item_id: str
 
-@app.post("/api/qa/generate")
+@app.post("/api/qa/generate", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def qa_generate_endpoint(req: QAGenerateRequest):
     try:
         markdown_content = await test_case_agent.generate_tests_for_workitem(req.item_id)
@@ -2432,29 +2447,28 @@ class QASyncRequest(BaseModel):
     parent_id: str
     markdown_content: str
 
-@app.post("/api/qa/sync")
+@app.post("/api/qa/sync", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def qa_sync_endpoint(req: QASyncRequest):
     try:
         result = await test_case_agent.sync_tests_to_ado(req.parent_id, req.markdown_content)
         if result.get("status") == "error":
-            raise Exception(result.get("message"))
+            raise RuntimeError(result.get("message"))
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/qa/generate-from-brd")
+@app.post("/api/qa/generate-from-brd", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def qa_generate_from_brd(file: UploadFile = File(...)):
     """
     Generates QA test cases directly from an uploaded BRD file (PDF, DOCX, TXT)
     using Approach 3: Auto-Backlog Pipeline (BRD -> BacklogGenAgent -> TestCaseAgent).
     """
-    import fitz
     import uuid
     doc_id = str(uuid.uuid4())
     temp_path = f"temp_qa_brd_{doc_id}_{file.filename}"
     
-    with open(temp_path, "wb") as buffer:
-        buffer.write(await file.read())
+    async with aiofiles.open(temp_path, "wb") as buffer:
+        await buffer.write(await file.read())
         
     try:
         # 1. Extract raw text
@@ -2478,11 +2492,11 @@ async def qa_generate_from_brd(file: UploadFile = File(...)):
                 doc = docx.Document(temp_path)
                 text_content = "\n".join([p.text for p in doc.paragraphs if p.text])
             except Exception:
-                with open(temp_path, "r", encoding="utf-8", errors="ignore") as f:
-                    text_content = f.read()
+                async with aiofiles.open(temp_path, "r", encoding="utf-8", errors="ignore") as f:
+                    text_content = await f.read()
         else:
-            with open(temp_path, "r", encoding="utf-8", errors="ignore") as f:
-                text_content = f.read()
+            async with aiofiles.open(temp_path, "r", encoding="utf-8", errors="ignore") as f:
+                text_content = await f.read()
                 
         if not text_content or not text_content.strip():
             raise HTTPException(status_code=400, detail="Failed to extract text content from the uploaded BRD document.")
@@ -2508,8 +2522,8 @@ async def qa_generate_from_brd(file: UploadFile = File(...)):
                 for fname in os.listdir(repo_tests_dir):
                     if fname.endswith(".spec.ts") or fname.endswith(".spec.js"):
                         fpath = os.path.join(repo_tests_dir, fname)
-                        with open(fpath, "r", encoding="utf-8", errors="ignore") as f:
-                            content = f.read()
+                        async with aiofiles.open(fpath, "r", encoding="utf-8", errors="ignore") as f:
+                            content = await f.read()
                             test_matches = re.findall(r"test\s*\(\s*['\"]([^'\"]+)['\"]", content)
                             existing_specs.append({
                                 "filename": fname,
@@ -2542,7 +2556,7 @@ class QAPdfExportRequest(BaseModel):
     title: Optional[str] = "QA Test Suite"
     test_cases: Any
 
-@app.post("/api/qa/export-pdf")
+@app.post("/api/qa/export-pdf", responses={400: {"description": "Bad Request"}, 404: {"description": "Not Found"}, 500: {"description": "Internal Server Error"}})
 async def qa_export_pdf(req: QAPdfExportRequest):
     """
     Generates a printable, styled HTML document for downloading QA Test Cases & Playwright scripts in PDF format.
@@ -2577,8 +2591,8 @@ async def qa_export_pdf(req: QAPdfExportRequest):
         base_dir = os.path.dirname(os.path.abspath(__file__))
         logo_path = os.path.join(base_dir, "..", "frontend", "public", "assets", "Valuemomentum_logo_dark.png")
         if os.path.exists(logo_path):
-            with open(logo_path, "rb") as img_f:
-                logo_base64 = base64.b64encode(img_f.read()).decode("utf-8")
+            async with aiofiles.open(logo_path, "rb") as img_f:
+                logo_base64 = base64.b64encode(await img_f.read()).decode("utf-8")
     except Exception:
         pass
 
@@ -2822,6 +2836,6 @@ async def qa_export_pdf(req: QAPdfExportRequest):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host=os.getenv("HOST", "0.0.0.0"), port=8000)
 
 

@@ -23,6 +23,10 @@ load_dotenv(dotenv_path=env_path)
 
 from openai import AsyncAzureOpenAI, AsyncOpenAI
 
+AZURE_SERVICES_HOST = "services.ai.azure.com"
+AZURE_INFERENCE_HOST = "inference.ml.azure.com"
+NVIDIA_DEFAULT_MODEL = "meta/llama-3.3-70b-instruct"
+
 class LLMService:
     def __init__(self):
 
@@ -34,7 +38,7 @@ class LLMService:
         self.azure_api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-15-preview")
         self.azure_client = None
         if self.azure_endpoint and self.azure_key:
-            if "services.ai.azure.com" in self.azure_endpoint or "inference.ml.azure.com" in self.azure_endpoint:
+            if AZURE_SERVICES_HOST in self.azure_endpoint or AZURE_INFERENCE_HOST in self.azure_endpoint:
                 base_url = self.azure_endpoint.rstrip('/')
                 if not base_url.endswith('/v1'):
                     base_url = f"{base_url}/v1"
@@ -60,7 +64,7 @@ class LLMService:
         self.azure_client_2 = None
         if self.azure_endpoint_2 and self.azure_key_2 and self.azure_deployment_2:
             # print(f" [LLMService] Secondary Azure OpenAI Deployment configured: '{self.azure_deployment_2}' at endpoint '{self.azure_endpoint_2}' (Version: {self.azure_api_version_2})")
-            if "services.ai.azure.com" in self.azure_endpoint_2 or "inference.ml.azure.com" in self.azure_endpoint_2:
+            if AZURE_SERVICES_HOST in self.azure_endpoint_2 or AZURE_INFERENCE_HOST in self.azure_endpoint_2:
                 base_url = self.azure_endpoint_2.rstrip('/')
                 if base_url.endswith('/responses'):
                     base_url = base_url[:-10].rstrip('/')
@@ -196,8 +200,9 @@ class LLMService:
         # print(f"DEBUG: Calling Azure Vision for {image_path}")
         try:
             import base64
-            with open(image_path, "rb") as f:
-                image_data = base64.b64encode(f.read()).decode("utf-8")
+            import aiofiles
+            async with aiofiles.open(image_path, "rb") as f:
+                image_data = base64.b64encode(await f.read()).decode("utf-8")
 
             messages = [
                 {
@@ -243,7 +248,7 @@ class LLMService:
                 elif len(vector) > 1536:
                     vector = vector[:1536]
                 return vector
-        except Exception as e:
+        except Exception:
             # print(f"DEBUG: Embedding Request ERROR: {e}")
             return [0.0] * 1536
 
@@ -330,14 +335,14 @@ class LLMService:
                 try:
                     sec_kwargs = _get_model_kwargs(self.azure_deployment_2, temperature)
                     try:
-                        completion = await self.azure_client.chat.completions.create(**sec_kwargs)
+                        completion = await self.azure_client_2.chat.completions.create(**sec_kwargs)
                     except Exception as e_sec_param:
                         if "max_tokens" in str(e_sec_param).lower() or "unsupported_parameter" in str(e_sec_param).lower():
                             sec_kwargs.pop("max_tokens", None)
                             sec_kwargs["max_completion_tokens"] = 16384
                             sec_kwargs.pop("temperature", None)
                             sec_kwargs.pop("seed", None)
-                            completion = await self.azure_client.chat.completions.create(**sec_kwargs)
+                            completion = await self.azure_client_2.chat.completions.create(**sec_kwargs)
                         else:
                             raise e_sec_param
 
@@ -424,9 +429,15 @@ class LLMService:
             
         kwargs = {
             "model": self.azure_fallback_deployment,
-            "messages": messages,
-            "max_tokens": 4096
+            "messages": messages
         }
+        
+        dep_lower = (self.azure_fallback_deployment or "").lower()
+        is_nextgen = any(k in dep_lower for k in ["gpt-5", "o1", "o3"])
+        if is_nextgen:
+            kwargs["max_completion_tokens"] = 16384
+        else:
+            kwargs["max_tokens"] = 4096
         
         if tools:
             kwargs["tools"] = tools
@@ -459,6 +470,55 @@ class LLMService:
             # print(f"DEBUG: Azure Fallback API ERROR: {str(e)}")
             return f"Azure Fallback Error: {str(e)}"
 
+    async def generate_with_groq(self, prompt: str, agent_name: str = "unknown", tools: list = None, tool_choice: str = "auto", messages: list = None):
+        import time
+        from services.telemetry_service import TelemetryService
+        from groq import AsyncGroq
+        
+        groq_key = os.getenv("GROQ_API_KEY")
+        if not groq_key: return "Groq Error: Not Configured"
+        
+        client = AsyncGroq(api_key=groq_key)
+        start_time = time.time()
+        
+        if not messages:
+            messages = [{"role": "user", "content": prompt}]
+            
+        kwargs = {
+            "model": os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+            "messages": messages,
+            "max_tokens": 4096
+        }
+        
+        if tools:
+            kwargs["tools"] = tools
+            kwargs["tool_choice"] = tool_choice
+            
+        try:
+            completion = await client.chat.completions.create(**kwargs)
+            latency = (time.time() - start_time) * 1000
+            
+            message = completion.choices[0].message
+            usage = completion.usage
+            
+            TelemetryService.log_call(
+                agent_name=agent_name, provider="groq", model_name=kwargs["model"],
+                latency_ms=latency, prompt_tokens=usage.prompt_tokens if usage else 0,
+                completion_tokens=usage.completion_tokens if usage else 0, success=True
+            )
+            
+            if message.tool_calls:
+                return message
+                
+            return message.content
+        except Exception as e:
+            latency = (time.time() - start_time) * 1000
+            TelemetryService.log_call(
+                agent_name=agent_name, provider="groq", model_name=kwargs["model"],
+                latency_ms=latency, success=False, error_message=str(e)
+            )
+            return f"Groq Error: {str(e)}"
+
     async def generate_with_nvidia(self, prompt: str, agent_name: str = "unknown", tools: list = None, tool_choice: str = "auto", messages: list = None):
         import time
         from services.telemetry_service import TelemetryService
@@ -480,7 +540,7 @@ class LLMService:
             messages = [{"role": "user", "content": prompt}]
             
         kwargs = {
-            "model": "meta/llama-3.1-70b-instruct",
+            "model": NVIDIA_DEFAULT_MODEL,
             "messages": messages,
             "max_tokens": 8000
         }
@@ -497,7 +557,7 @@ class LLMService:
             usage = completion.usage
             
             TelemetryService.log_call(
-                agent_name=agent_name, provider="nvidia", model_name="meta/llama-3.1-70b-instruct",
+                agent_name=agent_name, provider="nvidia", model_name=NVIDIA_DEFAULT_MODEL,
                 latency_ms=latency, prompt_tokens=usage.prompt_tokens if usage else 0,
                 completion_tokens=usage.completion_tokens if usage else 0, success=True
             )
@@ -509,13 +569,13 @@ class LLMService:
         except Exception as e:
             latency = (time.time() - start_time) * 1000
             TelemetryService.log_call(
-                agent_name=agent_name, provider="nvidia", model_name="meta/llama-3.1-70b-instruct",
+                agent_name=agent_name, provider="nvidia", model_name=NVIDIA_DEFAULT_MODEL,
                 latency_ms=latency, success=False, error_message=str(e)
             )
             # print(f"DEBUG: NVIDIA API ERROR: {str(e)}")
             return f"NVIDIA Error: {str(e)}"
 
-    async def call(self, prompt: str, provider: str = "azure", agent_name: str = "unknown", tools: list = None, tool_choice: str = "auto", messages: list = None, response_format: dict = None, temperature: float = None):
+    async def call(self, prompt: str, provider: str = "azure_fallback", agent_name: str = "unknown", tools: list = None, tool_choice: str = "auto", messages: list = None, response_format: dict = None, temperature: float = None):
         # Apply PII Guardrails
         from services.guardrail_service import GuardrailService
         guardrail = GuardrailService()
@@ -539,11 +599,9 @@ class LLMService:
                     agent_name = frame.f_locals['self'].__class__.__name__
                 else:
                     agent_name = frame.f_code.co_name
-            except:
+            except Exception:
                 pass
                 
-        pass
-        
         try:
             if provider == "azure": result = await self.generate_with_azure(safe_prompt, agent_name, tools, tool_choice, safe_messages, response_format, temperature=temperature)
             elif provider == "kimi": result = await self.generate_with_kimi(safe_prompt, agent_name, tools, tool_choice, safe_messages)
@@ -566,7 +624,7 @@ class LLMService:
 
         if is_error(result):
             print(f"⚠️ [LLMService WARN] Primary provider '{provider}' failed with: {result}")
-            print(f"🔄 [LLMService] Initiating provider fallback chain...")
+            print("🔄 [LLMService] Initiating provider fallback chain...")
             fallbacks = ["azure", "groq", "azure_fallback", "nvidia"]
             if provider in fallbacks: fallbacks.remove(provider)
             for fb in fallbacks:

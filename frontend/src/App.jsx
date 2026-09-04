@@ -1,6 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react'; // Enterprise Discovery Platform v1.1
+import React, { useState, useEffect } from 'react'; // Enterprise Discovery Platform v1.1
 import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import TelemetryDashboard from './components/TelemetryDashboard';
 import ChatWidget from './components/Chatbot/ChatWidget';
 import TestCaseAgentView from './components/Views/TestCaseAgentView';
@@ -9,10 +8,7 @@ import SprintPlannerView from './components/Views/SprintPlannerView';
 import TestCasesViewer from './components/Views/TestCasesViewer';
 import FunctionalSpecAccordionViewer from './components/Views/FunctionalSpecAccordionViewer';
 import StoryDetailsFormatted from './components/StoryDetailsFormatted';
-import { 
-  BarChart2, BookOpen, Rocket, Zap, List, Shield, 
-  Search, Code, GitMerge, FileText, CheckCircle, Target, User, ChevronRight, LayoutDashboard, Cloud, UploadCloud, Send
-} from 'lucide-react';
+import { Cloud, Send } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || (
   window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
@@ -23,8 +19,6 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || (
 // --- Components ---
 const AdoImportWidget = ({ onGenerate }) => {
   const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(false);
-
   const fetchItems = async () => {
     setLoading(true);
     try {
@@ -648,17 +642,17 @@ function App() {
 
           <div className="nav-group">
             <div className="nav-label">Intelligence Hub</div>
-            <div className={`nav-item ${currentView === 'dashboard' ? 'active' : ''}`} onClick={() => setCurrentView('dashboard')}>
+            <div className={`nav-item ${currentView === 'dashboard' ? 'active' : ''}`} role="button" tabIndex={0} onClick={() => setCurrentView('dashboard')}>
               <span className="nav-icon"><img src="/assets/icons/dashboard.png" width="18" height="18" alt="Dashboard" style={{ verticalAlign: 'middle' }} /></span> {!isSidebarCollapsed && "Command Center"}
             </div>
-            <div className={`nav-item ${currentView === 'knowledge_vault' ? 'active' : ''}`} onClick={() => setCurrentView('knowledge_vault')}>
+            <div className={`nav-item ${currentView === 'knowledge_vault' ? 'active' : ''}`} role="button" tabIndex={0} onClick={() => setCurrentView('knowledge_vault')}>
               <span className="nav-icon"><img src="/assets/icons/briefcase.png" width="18" height="18" alt="Memory" style={{ verticalAlign: 'middle' }} /></span> {!isSidebarCollapsed && "Institutional Memory"}
             </div>
           </div>
 
           <div className="nav-group">
             <div className="nav-label">Delivery OS</div>
-            <div className={`nav-item ${currentView === 'new_analysis' || currentView === 'workflow' || currentView === 'clarification' ? 'active' : ''}`} onClick={() => {
+            <div className={`nav-item ${currentView === 'new_analysis' || currentView === 'workflow' || currentView === 'clarification' ? 'active' : ''}`} role="button" tabIndex={0} onClick={() => {
               if (workflowData && (workflowData.docId || workflowData.extraction || workflowData.analysisId)) {
                 if (workflowData.clarifications && workflowData.clarifications.length > 0 && completedSteps.length < 3) {
                   setCurrentView('clarification');
@@ -672,39 +666,39 @@ function App() {
             }}>
               <span className="nav-icon"><img src="/assets/icons/professional-services.png" width="18" height="18" alt="Discovery" style={{ verticalAlign: 'middle' }} /></span> {!isSidebarCollapsed && "Discovery Swarm"}
             </div>
-            <div className={`nav-item ${currentView === 'quick_backlog' ? 'active' : ''}`} onClick={() => setCurrentView('quick_backlog')}>
+            <div className={`nav-item ${currentView === 'quick_backlog' ? 'active' : ''}`} role="button" tabIndex={0} onClick={() => setCurrentView('quick_backlog')}>
               <span className="nav-icon"><img src="/assets/icons/multitasking (2).png" width="18" height="18" alt="Quick Backlog" style={{ verticalAlign: 'middle' }} /></span> {!isSidebarCollapsed && "Quick Backlog"}
             </div>
-            <div className={`nav-item ${currentView === 'work_items' ? 'active' : ''}`} onClick={() => setCurrentView('work_items')}>
+            <div className={`nav-item ${currentView === 'work_items' ? 'active' : ''}`} role="button" tabIndex={0} onClick={() => setCurrentView('work_items')}>
               <span className="nav-icon"><img src="/assets/icons/multitasking.png" width="18" height="18" alt="Backlog" style={{ verticalAlign: 'middle' }} /></span> {!isSidebarCollapsed && "Backlog Explorer"}
             </div>
-            <div className={`nav-item ${currentView === 'traceability' ? 'active' : ''}`} onClick={() => setCurrentView('traceability')}>
+            <div className={`nav-item ${currentView === 'traceability' ? 'active' : ''}`} role="button" tabIndex={0} onClick={() => setCurrentView('traceability')}>
               <span className="nav-icon"><img src="/assets/icons/professional-network.png" width="18" height="18" alt="Governance" style={{ verticalAlign: 'middle' }} /></span> {!isSidebarCollapsed && "Governance Matrix"}
             </div>
           </div>
 
           <div className="nav-group">
             <div className="nav-label">Agentic Tools</div>
-            <div className={`nav-item ${currentView === 'gap_detective' ? 'active' : ''}`} onClick={() => setCurrentView('gap_detective')}>
+            <div className={`nav-item ${currentView === 'gap_detective' ? 'active' : ''}`} role="button" tabIndex={0} onClick={() => setCurrentView('gap_detective')}>
               <span className="nav-icon"><img src="/assets/icons/evaluation.png" width="18" height="18" alt="Gaps" style={{ verticalAlign: 'middle' }} /></span> {!isSidebarCollapsed && "Gap Detective"}
             </div>
-            <div className={`nav-item ${currentView === 'spec_architect' ? 'active' : ''}`} onClick={() => setCurrentView('spec_architect')}>
+            <div className={`nav-item ${currentView === 'spec_architect' ? 'active' : ''}`} role="button" tabIndex={0} onClick={() => setCurrentView('spec_architect')}>
               <span className="nav-icon"><img src="/assets/icons/business.png" width="18" height="18" alt="Spec" style={{ verticalAlign: 'middle' }} /></span> {!isSidebarCollapsed && "Functional Architect"}
             </div>
-            <div className={`nav-item ${currentView === 'flow_designer' ? 'active' : ''}`} onClick={() => setCurrentView('flow_designer')}>
+            <div className={`nav-item ${currentView === 'flow_designer' ? 'active' : ''}`} role="button" tabIndex={0} onClick={() => setCurrentView('flow_designer')}>
               <span className="nav-icon"><img src="/assets/icons/multitasking (1).png" width="18" height="18" alt="Flow" style={{ verticalAlign: 'middle' }} /></span> {!isSidebarCollapsed && "Flow Designer"}
             </div>
-            <div className={`nav-item ${currentView === 'test_case_agent' ? 'active' : ''}`} onClick={() => setCurrentView('test_case_agent')}>
+            <div className={`nav-item ${currentView === 'test_case_agent' ? 'active' : ''}`} role="button" tabIndex={0} onClick={() => setCurrentView('test_case_agent')}>
               <span className="nav-icon"><img src="/assets/icons/professionalism.png" width="18" height="18" alt="Tests" style={{ verticalAlign: 'middle' }} /></span> {!isSidebarCollapsed && "Test Case Agent"}
             </div>
-            <div className={`nav-item ${currentView === 'sprint_planner' ? 'active' : ''}`} onClick={() => setCurrentView('sprint_planner')}>
+            <div className={`nav-item ${currentView === 'sprint_planner' ? 'active' : ''}`} role="button" tabIndex={0} onClick={() => setCurrentView('sprint_planner')}>
               <span className="nav-icon"><img src="/assets/icons/professional.png" width="18" height="18" alt="Sprint" style={{ verticalAlign: 'middle' }} /></span> {!isSidebarCollapsed && "Sprint Planner"}
             </div>
           </div>
           
           <div className="nav-group">
             <div className="nav-label">Admin</div>
-            <div className={`nav-item ${currentView === 'telemetry' ? 'active' : ''}`} onClick={() => setCurrentView('telemetry')}>
+            <div className={`nav-item ${currentView === 'telemetry' ? 'active' : ''}`} role="button" tabIndex={0} onClick={() => setCurrentView('telemetry')}>
               <span className="nav-icon"><Cloud size={18} /></span> {!isSidebarCollapsed && "LLMOps Telemetry"}
             </div>
           </div>
@@ -893,7 +887,7 @@ const DashboardView = ({ stats, filter, setFilter, data, context, metrics, onRes
       </header>
 
       <div className="stat-tiles">
-        <div className={`stat-tile glass-card ${filter === 'documents' ? 'active' : ''}`} onClick={() => setFilter('documents')}>
+        <div className={`stat-tile glass-card ${filter === 'documents' ? 'active' : ''}`} role="button" tabIndex={0} onClick={() => setFilter('documents')}>
           <div className="tile-top">
             <span className="tile-label">INGESTION</span>
             <span className="tile-trend up">↑ 12%</span>
@@ -904,7 +898,7 @@ const DashboardView = ({ stats, filter, setFilter, data, context, metrics, onRes
           </div>
         </div>
 
-        <div className={`stat-tile glass-card ${filter === 'analyses' ? 'active' : ''}`} onClick={() => setFilter('analyses')}>
+        <div className={`stat-tile glass-card ${filter === 'analyses' ? 'active' : ''}`} role="button" tabIndex={0} onClick={() => setFilter('analyses')}>
           <div className="tile-top">
             <span className="tile-label">GOVERNANCE</span>
             <span className="tile-trend">Stable</span>
@@ -1050,7 +1044,7 @@ const SelectionView = ({ onSelect, selectedLOB, setSelectedLOB, selectedModules,
       </div>
 
       {ingestMode === 'file' && (
-        <div className="discovery-tile glass-card" style={{ maxWidth: '800px', margin: '0 auto 32px' }} onClick={() => document.getElementById('brd-up').click()}>
+        <div className="discovery-tile glass-card" style={{ maxWidth: '800px', margin: '0 auto 32px' }} role="button" tabIndex={0} onClick={() => document.getElementById('brd-up').click()}>
           <div className="tile-accent yellow"></div>
           <div className="tile-icon">📂</div>
           <div className="tile-info">
@@ -1077,7 +1071,7 @@ const SelectionView = ({ onSelect, selectedLOB, setSelectedLOB, selectedModules,
       )}
 
       {ingestMode === 'visual' && (
-        <div className="discovery-tile glass-card" style={{ maxWidth: '800px', margin: '0 auto 32px' }} onClick={() => document.getElementById('img-up').click()}>
+        <div className="discovery-tile glass-card" style={{ maxWidth: '800px', margin: '0 auto 32px' }} role="button" tabIndex={0} onClick={() => document.getElementById('img-up').click()}>
           <div className="tile-accent cyan"></div>
           <div className="tile-icon">🖼️</div>
           <div className="tile-info">
@@ -1090,7 +1084,7 @@ const SelectionView = ({ onSelect, selectedLOB, setSelectedLOB, selectedModules,
       )}
 
       {ingestMode === 'meeting' && (
-        <div className="discovery-tile glass-card" style={{ maxWidth: '800px', margin: '0 auto 32px' }} onClick={() => document.getElementById('meet-up').click()}>
+        <div className="discovery-tile glass-card" style={{ maxWidth: '800px', margin: '0 auto 32px' }} role="button" tabIndex={0} onClick={() => document.getElementById('meet-up').click()}>
           <div className="tile-accent purple"></div>
           <div className="tile-icon">🎙️</div>
           <div className="tile-info">
@@ -1112,8 +1106,7 @@ const SelectionView = ({ onSelect, selectedLOB, setSelectedLOB, selectedModules,
           {['Personal Auto', 'Homeowners', 'Commercial Property', 'Workers Compensation', 'General Liability', 'Inland Marine'].map(lob => (
             <div
               key={lob}
-              className={`lob-chip ${selectedLOB === lob ? 'active' : ''}`}
-              onClick={() => setSelectedLOB(lob)}
+              className={`lob-chip ${selectedLOB === lob ? 'active' : ''}`} role="button" tabIndex={0} onClick={() => setSelectedLOB(lob)}
             >
               {lob}
             </div>
@@ -1304,8 +1297,7 @@ const WorkflowView = ({ activeStep, completedSteps, data, onFinish, onClose, isS
               {!showAllGaps && gapsArray?.length > 3 && (
                 <div 
                     className="risk-tag" 
-                    style={{ cursor: 'pointer', textAlign: 'center', marginTop: '8px', display: 'block', padding: '8px' }}
-                    onClick={() => setShowAllGaps(true)}
+                    style={{ cursor: 'pointer', textAlign: 'center', marginTop: '8px', display: 'block', padding: '8px' }} role="button" tabIndex={0} onClick={() => setShowAllGaps(true)}
                 >
                     + {gapsArray.length - 3} more Gaps (Click to Expand)
                 </div>
@@ -1313,8 +1305,7 @@ const WorkflowView = ({ activeStep, completedSteps, data, onFinish, onClose, isS
               {showAllGaps && (
                 <div 
                     className="risk-tag" 
-                    style={{ cursor: 'pointer', textAlign: 'center', marginTop: '8px', display: 'block', padding: '8px', background: 'rgba(255,255,255,0.1)', color: '#fff' }}
-                    onClick={() => setShowAllGaps(false)}
+                    style={{ cursor: 'pointer', textAlign: 'center', marginTop: '8px', display: 'block', padding: '8px', background: 'rgba(255,255,255,0.1)', color: '#fff' }} role="button" tabIndex={0} onClick={() => setShowAllGaps(false)}
                 >
                     Collapse Gaps
                 </div>
@@ -1430,7 +1421,7 @@ const WorkflowView = ({ activeStep, completedSteps, data, onFinish, onClose, isS
                   </div>
                 ))}
                 {!showAllReqs && data.extraction?.functional_requirements?.length > 5 && (
-                  <div className="req-more-count" onClick={() => setShowAllReqs(true)} style={{ cursor: 'pointer', color: 'var(--accent-primary)', padding: '10px' }}>
+                  <div className="req-more-count" role="button" tabIndex={0} onClick={() => setShowAllReqs(true)} style={{ cursor: 'pointer', color: 'var(--accent-primary)', padding: '10px' }}>
                     + {data.extraction.functional_requirements.length - 5} more (Click to Expand)
                   </div>
                 )}
@@ -1822,7 +1813,7 @@ const BacklogTree = ({ data, onToggle, onUpdateBacklog }) => {
           const isEpicCollapsed = !!collapsedEpics[eIdx];
           return (
             <div key={eIdx} className={`node epic ${epic.selected === false ? 'unselected' : ''}`}>
-              <div className="node-head" onClick={() => toggleEpicCollapse(eIdx)} style={{ cursor: 'pointer' }}>
+              <div className="node-head" role="button" tabIndex={0} onClick={() => toggleEpicCollapse(eIdx)} style={{ cursor: 'pointer' }}>
                 <input 
                   type="checkbox" 
                   checked={epic.selected !== false} 
@@ -1855,7 +1846,7 @@ const BacklogTree = ({ data, onToggle, onUpdateBacklog }) => {
                       const isFeatCollapsed = !!collapsedFeatures[featKey];
                       return (
                         <div key={fIdx} className={`node feature ${feature.selected === false ? 'unselected' : ''}`}>
-                          <div className="node-head" onClick={() => toggleFeatureCollapse(featKey)} style={{ cursor: 'pointer' }}>
+                          <div className="node-head" role="button" tabIndex={0} onClick={() => toggleFeatureCollapse(featKey)} style={{ cursor: 'pointer' }}>
                             <input 
                               type="checkbox" 
                               checked={feature.selected !== false} 
@@ -1888,7 +1879,7 @@ const BacklogTree = ({ data, onToggle, onUpdateBacklog }) => {
                                   const isStoryCollapsed = !!collapsedStories[storyKey];
                                   return (
                                     <div key={sIdx} className={`node story ${story.selected === false ? 'unselected' : ''}`}>
-                                      <div className="node-head" onClick={() => toggleStoryCollapse(storyKey)} style={{ cursor: 'pointer' }}>
+                                      <div className="node-head" role="button" tabIndex={0} onClick={() => toggleStoryCollapse(storyKey)} style={{ cursor: 'pointer' }}>
                                         <input 
                                           type="checkbox" 
                                           checked={story.selected !== false} 
@@ -2296,7 +2287,7 @@ const CapacityView = () => {
 
   const calculateCapacity = (memberName) => {
     const memberItems = items.filter(i => i.assigned_to === memberName);
-    const totalEffort = memberItems.reduce((acc, curr) => acc + (parseFloat(curr.effort) || 0), 0);
+    const totalEffort = memberItems.reduce((acc, curr) => acc + (Number.parseFloat(curr.effort) || 0), 0);
     const count = memberItems.length;
     return { totalEffort, count };
   };
@@ -2435,8 +2426,7 @@ const WorkItemsView = () => {
               {['All', 'Epic', 'Feature', 'User Story', 'Task'].map(type => (
                 <div
                   key={type}
-                  className={`filter-pill ${typeFilter === type ? 'active' : ''}`}
-                  onClick={() => setTypeFilter(type)}
+                  className={`filter-pill ${typeFilter === type ? 'active' : ''}`} role="button" tabIndex={0} onClick={() => setTypeFilter(type)}
                 >
                   {type}
                 </div>
@@ -2448,16 +2438,14 @@ const WorkItemsView = () => {
             <label>Sprint (Iteration)</label>
             <div className="filter-pill-row">
               <div
-                className={`filter-pill ${iterationFilter === 'All' ? 'active' : ''}`}
-                onClick={() => setIterationFilter('All')}
+                className={`filter-pill ${iterationFilter === 'All' ? 'active' : ''}`} role="button" tabIndex={0} onClick={() => setIterationFilter('All')}
               >
                 All Sprints
               </div>
               {iterations.map(it => (
                 <div
                   key={it.id}
-                  className={`filter-pill ${iterationFilter === it.path ? 'active' : ''}`}
-                  onClick={() => setIterationFilter(it.path)}
+                  className={`filter-pill ${iterationFilter === it.path ? 'active' : ''}`} role="button" tabIndex={0} onClick={() => setIterationFilter(it.path)}
                 >
                   {it.name}
                 </div>
@@ -2480,7 +2468,7 @@ const WorkItemsView = () => {
             </thead>
             <tbody>
               {filteredItems.map(item => (
-                <tr key={item.id} onClick={() => handleEditOpen(item)}>
+                <tr key={item.id} role="button" tabIndex={0} onClick={() => handleEditOpen(item)}>
                   <td className="item-id-cell"># {item.id}</td>
                   <td className="item-title-cell">{item.title}</td>
                   <td><span className="type-badge">{item.type}</span></td>
@@ -2494,8 +2482,8 @@ const WorkItemsView = () => {
       </div>
 
       {selectedItem && (
-        <div className="modal-overlay" onClick={() => setSelectedItem(null)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()}>
+        <div className="modal-overlay" role="button" tabIndex={0} onClick={() => setSelectedItem(null)}>
+          <div className="modal-content" role="button" tabIndex={0} onClick={e => e.stopPropagation()}>
             <button className="modal-close-btn" onClick={() => setSelectedItem(null)}>← Back to Explorer</button>
             <div className="modal-inner">
               <div className="details-header-top">
@@ -2629,7 +2617,7 @@ const Mermaid = ({ chart }) => {
       window.mermaid.contentLoaded();
       const element = document.querySelector('.mermaid');
       if (element) {
-        element.removeAttribute('data-processed');
+        element.dataset.processed = undefined;
         window.mermaid.init(undefined, element);
       }
     }
@@ -2713,7 +2701,7 @@ const GapDetectiveView = () => {
              <p style={{ color: 'var(--text-muted)', fontSize: '1.1rem' }}>Identify contradictions, technical oversights, and business rule gaps.</p>
           </div>
 
-          <div className="studio-dropzone glass-card" onClick={() => document.getElementById('gap-up').click()} style={{ border: '2px dashed var(--glass-border)', padding: '40px', cursor: 'pointer', transition: 'all 0.3s ease' }}>
+          <div className="studio-dropzone glass-card" role="button" tabIndex={0} onClick={() => document.getElementById('gap-up').click()} style={{ border: '2px dashed var(--glass-border)', padding: '40px', cursor: 'pointer', transition: 'all 0.3s ease' }}>
              <div style={{ fontSize: '3rem', marginBottom: '16px' }}>🕵️‍♂️</div>
              <h4 style={{ marginBottom: '8px' }}>Drop Specification for Deep Scan</h4>
              <p style={{ fontSize: '0.85rem', opacity: 0.6 }}>Supports PDF, DOCX, and Direct Text analysis</p>
@@ -2839,7 +2827,7 @@ const SpecArchitectView = () => {
              <p style={{ color: 'var(--text-muted)', fontSize: '1.1rem' }}>Convert business requirements into engineering-ready Functional Specifications.</p>
           </div>
 
-          <div className="studio-dropzone glass-card" onClick={() => document.getElementById('functional_spec-up-tool').click()} style={{ border: '2px dashed var(--accent-primary)', padding: '40px', cursor: 'pointer', background: 'rgba(0,0,0,0.3)' }}>
+          <div className="studio-dropzone glass-card" role="button" tabIndex={0} onClick={() => document.getElementById('functional_spec-up-tool').click()} style={{ border: '2px dashed var(--accent-primary)', padding: '40px', cursor: 'pointer', background: 'rgba(0,0,0,0.3)' }}>
              <div style={{ fontSize: '3rem', marginBottom: '16px' }}>🏗️</div>
              <h4 style={{ marginBottom: '8px' }}>Ingest Material for Architecture</h4>
              <p style={{ fontSize: '0.85rem', opacity: 0.6 }}>Our agents will draft a complete Functional Spec based on your source input.</p>
@@ -2945,7 +2933,7 @@ const FlowDesignerView = () => {
              <p style={{ color: 'var(--text-muted)', fontSize: '1.1rem' }}>Map business processes into high-fidelity technical flow diagrams.</p>
           </div>
 
-          <div className="studio-dropzone glass-card" onClick={() => document.getElementById('flow-up-tool').click()} style={{ border: '2px dashed var(--accent-secondary)', padding: '40px', cursor: 'pointer', background: 'rgba(0,0,0,0.3)' }}>
+          <div className="studio-dropzone glass-card" role="button" tabIndex={0} onClick={() => document.getElementById('flow-up-tool').click()} style={{ border: '2px dashed var(--accent-secondary)', padding: '40px', cursor: 'pointer', background: 'rgba(0,0,0,0.3)' }}>
              <div style={{ fontSize: '3rem', marginBottom: '16px' }}>🎨</div>
              <h4 style={{ marginBottom: '8px' }}>Ingest Logic for Visualization</h4>
              <p style={{ fontSize: '0.85rem', opacity: 0.6 }}>Our Visual Agent will synthesize process flows from your requirements.</p>
@@ -2999,8 +2987,7 @@ const CollapsibleEpic = ({ epic }) => {
   return (
     <div className="epic-node" style={{ marginBottom: '16px', border: '1px solid var(--glass-border)', borderRadius: '8px', padding: '12px', background: 'rgba(0,0,0,0.2)' }}>
       <div 
-        className="node-title" 
-        onClick={() => setIsOpen(!isOpen)} 
+        className="node-title" role="button" tabIndex={0} onClick={() => setIsOpen(!isOpen)} 
         style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
       >
         <span><strong style={{ color: 'var(--accent-primary)' }}>EPIC:</strong> {epic.title}</span>
@@ -3020,8 +3007,7 @@ const CollapsibleFeature = ({ feat }) => {
   return (
     <div className="feat-node" style={{ marginBottom: '12px', borderLeft: '2px solid var(--glass-border)', paddingLeft: '12px' }}>
       <div 
-        className="node-title" 
-        onClick={() => setIsOpen(!isOpen)} 
+        className="node-title" role="button" tabIndex={0} onClick={() => setIsOpen(!isOpen)} 
         style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.95rem' }}
       >
         <span><strong style={{ color: '#00f2ff' }}>FEAT:</strong> {feat.title}</span>
@@ -3137,7 +3123,7 @@ const BacklogEngineerView = () => {
       </header>
 
       {!backlog ? (
-        <div className="discovery-tile glass-card" onClick={() => document.getElementById('back-up-tool').click()}>
+        <div className="discovery-tile glass-card" role="button" tabIndex={0} onClick={() => document.getElementById('back-up-tool').click()}>
           <div className="tile-accent yellow"></div>
           <div className="tile-icon"></div>
           <div className="tile-info">
